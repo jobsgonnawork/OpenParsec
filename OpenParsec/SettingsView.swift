@@ -13,6 +13,7 @@ struct SettingsView:View
 	@State var mouseSensitivity:Float = SettingsHandler.mouseSensitivity
 	@State var noOverlay:Bool = SettingsHandler.noOverlay
 	@State var hideStatusBar:Bool = SettingsHandler.hideStatusBar
+	@State var frameRateMode: FrameRateMode = SettingsHandler.frameRateMode
 	
 	let resolutionChoices : [Choice<ParsecResolution>]
 
@@ -106,7 +107,7 @@ struct SettingsView:View
 								Text(String(format: "%.1f", mouseSensitivity))
 							}
                         }
-                        CatTitle("Graphics")
+						CatTitle("Graphics")
                         CatList()
                         {
                             /*CatItem("Renderer")
@@ -130,6 +131,14 @@ struct SettingsView:View
 									Choice("Prefer H.265", DecoderPref.h265)
 								])
                             }
+							CatItem("Frame Rate")
+							{
+								MultiPicker(selection:$frameRateMode, options:
+								[
+									Choice("Auto (Max)", FrameRateMode.auto),
+									Choice("60 FPS", FrameRateMode.fps60)
+								])
+							}
                         }
                         CatTitle("Misc")
                         CatList()
@@ -174,6 +183,7 @@ struct SettingsView:View
 		SettingsHandler.noOverlay = noOverlay
 		SettingsHandler.hideStatusBar = hideStatusBar
 		SettingsHandler.mouseSensitivity = mouseSensitivity
+		SettingsHandler.frameRateMode = frameRateMode
 		SettingsHandler.save()
 		
 		visible = false

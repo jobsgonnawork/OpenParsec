@@ -1,5 +1,10 @@
 import Foundation
 
+enum FrameRateMode: Int {
+    case auto = 0 // Use device maximum
+    case fps60 = 1 // Cap at 60 FPS
+}
+
 struct SettingsHandler
 {
 	//public static var renderer:RendererType = .opengl
@@ -11,6 +16,8 @@ struct SettingsHandler
 	public static var noOverlay:Bool = false
 	public static var hideStatusBar:Bool = true
 	public static var rightClickPosition:RightClickPosition = .firstFinger
+
+	public static var frameRateMode: FrameRateMode = .auto
 	
 	public static func load()
 	{
@@ -30,6 +37,9 @@ struct SettingsHandler
 			{ noOverlay = UserDefaults.standard.bool(forKey:"noOverlay") }
 		if UserDefaults.standard.exists(forKey:"hideStatusBar")
 		{ hideStatusBar = UserDefaults.standard.bool(forKey:"hideStatusBar") }
+
+		if UserDefaults.standard.exists(forKey:"frameRateMode")
+		{ frameRateMode = FrameRateMode(rawValue: UserDefaults.standard.integer(forKey: "frameRateMode")) ?? .auto }
 		
 		if UserDefaults.standard.exists(forKey:"resolution") {
 			for res in ParsecResolution.resolutions {
@@ -52,6 +62,7 @@ struct SettingsHandler
 		UserDefaults.standard.set(noOverlay, forKey:"noOverlay")
 		UserDefaults.standard.set(resolution.desc, forKey:"resolution")
 		UserDefaults.standard.set(hideStatusBar, forKey: "hideStatusBar")
+		UserDefaults.standard.set(frameRateMode.rawValue, forKey: "frameRateMode")
 	}
 }
 
