@@ -57,7 +57,8 @@ struct ParsecStatusBar : View {
 		if showMenu
 		{
 			let str = String.fromBuffer(&pcs.decoder.0.name.0, length:16)
-			metricInfo = "Decode \(String(format:"%.2f", pcs.`self`.metrics.0.decodeLatency))ms    Encode \(String(format:"%.2f", pcs.`self`.metrics.0.encodeLatency))ms    Network \(String(format:"%.2f", pcs.`self`.metrics.0.networkLatency))ms    Bitrate \(String(format:"%.2f", pcs.`self`.metrics.0.bitrate))Mbps    \(pcs.decoder.0.h265 ? "H265" : "H264") \(pcs.decoder.0.width)x\(pcs.decoder.0.height) \(pcs.decoder.0.color444 ? "4:4:4" : "4:2:0") \(str)"
+			let hz = Int(round(CParsec.displayedFps))
+			metricInfo = "Decode \(String(format:"%.2f", pcs.`self`.metrics.0.decodeLatency))ms    Encode \(String(format:"%.2f", pcs.`self`.metrics.0.encodeLatency))ms    Network \(String(format:"%.2f", pcs.`self`.metrics.0.networkLatency))ms    Bitrate \(String(format:"%.2f", pcs.`self`.metrics.0.bitrate))Mbps    \(pcs.decoder.0.h265 ? "H265" : "H264") \(pcs.decoder.0.width)x\(pcs.decoder.0.height) \(hz)Hz \(pcs.decoder.0.color444 ? "4:4:4" : "4:2:0") \(str)"
 		}
 	}
 }
@@ -110,14 +111,16 @@ struct ParsecView:View
 				{
 					HStack()
 					{
-						Button(action:{
-							if showMenu {
-								showMenu = false
-							} else {
-								showMenu = true
-								getHostUserData()
-							}
-						})
+                        Button(action:{
+                            if showMenu {
+                                showMenu = false
+                                CParsec.fpsMeterEnabled = false
+                            } else {
+                                showMenu = true
+                                CParsec.fpsMeterEnabled = true
+                                getHostUserData()
+                            }
+                        })
 						{
 							Image("IconTransparent")
 								.resizable()

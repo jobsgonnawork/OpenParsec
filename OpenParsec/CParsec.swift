@@ -89,6 +89,9 @@ protocol ParsecService {
 
 class CParsec
 {
+	public static var displayedFps: Double = 0
+    public static var fpsMeterEnabled: Bool = false
+
 	public static var hostWidth:Float {
 		return parsecImpl.hostWidth
 	}
