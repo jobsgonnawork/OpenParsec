@@ -13,6 +13,7 @@ struct SettingsView:View
 	@State var mouseSensitivity:Float = SettingsHandler.mouseSensitivity
 	@State var noOverlay:Bool = SettingsHandler.noOverlay
 	@State var hideStatusBar:Bool = SettingsHandler.hideStatusBar
+	@State var frameRateMode: FrameRateMode = SettingsHandler.frameRateMode
 	
 	let resolutionChoices : [Choice<ParsecResolution>]
 
@@ -106,7 +107,7 @@ struct SettingsView:View
 								Text(String(format: "%.1f", mouseSensitivity))
 							}
                         }
-                        CatTitle("Graphics")
+						CatTitle("Graphics")
                         CatList()
                         {
                             /*CatItem("Renderer")
@@ -130,6 +131,20 @@ struct SettingsView:View
 									Choice("Prefer H.265", DecoderPref.h265)
 								])
                             }
+							CatItem("Frame Rate")
+							{
+								let hasProMotion = {
+									if #available(iOS 10.3, *) { return UIScreen.main.maximumFramesPerSecond >= 120 }
+									return false
+								}()
+								Picker("", selection:$frameRateMode) {
+									Text("60 FPS").tag(FrameRateMode.fps60)
+									Text(hasProMotion ? "120 FPS (ProMotion)" : "120 FPS (Requires ProMotion)")
+										.foregroundColor(hasProMotion ? Color("Foreground") : Color.gray)
+										.tag(FrameRateMode.auto)
+								}
+								.pickerStyle(.menu)
+							}
                         }
                         CatTitle("Misc")
                         CatList()
@@ -174,6 +189,7 @@ struct SettingsView:View
 		SettingsHandler.noOverlay = noOverlay
 		SettingsHandler.hideStatusBar = hideStatusBar
 		SettingsHandler.mouseSensitivity = mouseSensitivity
+		SettingsHandler.frameRateMode = frameRateMode
 		SettingsHandler.save()
 		
 		visible = false
