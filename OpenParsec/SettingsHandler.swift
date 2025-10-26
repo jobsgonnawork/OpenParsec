@@ -40,6 +40,14 @@ struct SettingsHandler
 
 		if UserDefaults.standard.exists(forKey:"frameRateMode")
 		{ frameRateMode = FrameRateMode(rawValue: UserDefaults.standard.integer(forKey: "frameRateMode")) ?? .auto }
+		// Coerce unsupported modes on non-ProMotion devices
+		if #available(iOS 10.3, *) {
+			if UIScreen.main.maximumFramesPerSecond < 120 && frameRateMode == .auto {
+				frameRateMode = .fps60
+			}
+		} else {
+			frameRateMode = .fps60
+		}
 		
 		if UserDefaults.standard.exists(forKey:"resolution") {
 			for res in ParsecResolution.resolutions {

@@ -43,20 +43,26 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
         // Derive timeout from the current preferred FPS (ms per frame)
 		let fps = max(glkViewController.preferredFramesPerSecond, 1)
 		let timeoutMs = UInt32(1000 / fps)
+		let start = CACurrentMediaTime()
 		CParsec.renderGLFrame(timeout: timeoutMs)
 		
 		updateImage()
 
-        // FPS measurement: update once per 0.5s for stability (only when enabled)
+		// FPS measurement: count only when a new frame likely arrived (returned before timeout)
         if CParsec.fpsMeterEnabled {
-            frameCounter += 1
-            let now = CACurrentMediaTime()
-            let elapsed = now - lastFpsTimestamp
-            if elapsed >= 0.5 {
-                CParsec.displayedFps = Double(frameCounter) / elapsed
-                frameCounter = 0
-                lastFpsTimestamp = now
-            }
+			let end = CACurrentMediaTime()
+			let callDuration = end - start
+			let expectedTimeout = Double(timeoutMs) / 1000.0
+			// If the call returned significantly before the timeout, a new frame likely arrived
+			if callDuration < expectedTimeout * 0.8 {
+				frameCounter += 1
+			}
+			let windowElapsed = end - lastFpsTimestamp
+			if windowElapsed >= 0.5 {
+				CParsec.displayedFps = Double(frameCounter) / windowElapsed
+				frameCounter = 0
+				lastFpsTimestamp = end
+			}
         }
 		
 

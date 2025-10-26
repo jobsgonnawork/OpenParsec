@@ -133,11 +133,17 @@ struct SettingsView:View
                             }
 							CatItem("Frame Rate")
 							{
-								MultiPicker(selection:$frameRateMode, options:
-								[
-									Choice("Auto (Max)", FrameRateMode.auto),
-									Choice("60 FPS", FrameRateMode.fps60)
-								])
+								let hasProMotion = {
+									if #available(iOS 10.3, *) { return UIScreen.main.maximumFramesPerSecond >= 120 }
+									return false
+								}()
+								Picker("", selection:$frameRateMode) {
+									Text("60 FPS").tag(FrameRateMode.fps60)
+									Text(hasProMotion ? "120 FPS (ProMotion)" : "120 FPS (Requires ProMotion)")
+										.foregroundColor(hasProMotion ? Color("Foreground") : Color.gray)
+										.tag(FrameRateMode.auto)
+								}
+								.pickerStyle(.menu)
 							}
                         }
                         CatTitle("Misc")
