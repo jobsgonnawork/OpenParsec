@@ -1,4 +1,5 @@
 import Foundation
+import UIKit
 
 enum FrameRateMode: Int {
     case auto = 0 // Use device maximum
