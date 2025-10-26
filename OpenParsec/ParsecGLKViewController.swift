@@ -52,7 +52,13 @@ class ParsecGLKViewController : ParsecPlayground {
 	private func setupGLKViewController() {
 		glkView.context = EAGLContext(api: .openGLES3)!
 		glkViewController.view = glkView
-		glkViewController.preferredFramesPerSecond = 60
+		// Prefer the display's maximum refresh rate (e.g., 120Hz on ProMotion devices)
+		if #available(iOS 10.3, *) {
+			let maxFPS = UIScreen.main.maximumFramesPerSecond
+			glkViewController.preferredFramesPerSecond = maxFPS > 0 ? maxFPS : 60
+		} else {
+			glkViewController.preferredFramesPerSecond = 60
+		}
 		self.viewController.addChild(glkViewController)
 		self.viewController.view.addSubview(glkViewController.view)
 		self.glkViewController.didMove(toParent: self.viewController)
