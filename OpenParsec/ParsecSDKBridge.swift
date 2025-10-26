@@ -518,6 +518,14 @@ class ParsecSDKBridge: ParsecService
 		videoConfig.video[0].encoderMaxBitrate = DataManager.model.bitrate
 		videoConfig.video[0].fullFPS = DataManager.model.constantFps
 		videoConfig.video[0].output = DataManager.model.output
+        // Set desired encoder FPS based on user frame rate mode
+        let desiredFps: Int
+        if #available(iOS 10.3, *) {
+            desiredFps = (SettingsHandler.frameRateMode == .fps60) ? 60 : UIScreen.main.maximumFramesPerSecond
+        } else {
+            desiredFps = 60
+        }
+        videoConfig.video[0].encoderFPS = desiredFps
 		let encoder = JSONEncoder()
 		let data = try! encoder.encode(videoConfig)
 		CParsec.sendUserData(type: .setVideoConfig, message: data)
