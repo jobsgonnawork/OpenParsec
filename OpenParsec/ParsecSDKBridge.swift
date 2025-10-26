@@ -511,12 +511,11 @@ class ParsecSDKBridge: ParsecService
 		}
 	}
 	
-	func updateHostVideoConfig() {
+    func updateHostVideoConfig() {
 		var videoConfig = ParsecUserDataVideoConfig()
 		videoConfig.video[0].resolutionX = DataManager.model.resolutionX
 		videoConfig.video[0].resolutionY = DataManager.model.resolutionY
 		videoConfig.video[0].encoderMaxBitrate = DataManager.model.bitrate
-		videoConfig.video[0].fullFPS = DataManager.model.constantFps
 		videoConfig.video[0].output = DataManager.model.output
         // Set desired encoder FPS based on user frame rate mode
         let desiredFps: Int
@@ -526,6 +525,8 @@ class ParsecSDKBridge: ParsecService
             desiredFps = 60
         }
         videoConfig.video[0].encoderFPS = desiredFps
+        // Ensure host doesn't drop to 30 FPS: request full FPS whenever desired >= 60
+        videoConfig.video[0].fullFPS = desiredFps >= 60
 		let encoder = JSONEncoder()
 		let data = try! encoder.encode(videoConfig)
 		CParsec.sendUserData(type: .setVideoConfig, message: data)
