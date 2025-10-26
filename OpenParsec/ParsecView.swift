@@ -118,6 +118,8 @@ struct ParsecView:View
                             } else {
                                 showMenu = true
                                 CParsec.fpsMeterEnabled = true
+								// Sync local toggle with host/model when opening menu
+								constantFps = DataManager.model.constantFps
                                 getHostUserData()
                             }
                         })
@@ -244,6 +246,8 @@ struct ParsecView:View
 	{
 		CParsec.applyConfig()
 		CParsec.setMuted(muted)
+		// Ensure local overlay reflects host/model on entry
+		constantFps = DataManager.model.constantFps
 		
 		// set client resolution
 		let screenSize: CGSize = self.parsecViewController.view.frame.size
