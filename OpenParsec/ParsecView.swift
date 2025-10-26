@@ -323,6 +323,7 @@ struct ParsecView:View
 	func toggleConstantFps() {
 		DataManager.model.constantFps.toggle()
 		constantFps = DataManager.model.constantFps
+		// Immediately send updated config to host
 		CParsec.updateHostVideoConfig()
 	}
 	

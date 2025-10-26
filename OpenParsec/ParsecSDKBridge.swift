@@ -192,17 +192,23 @@ class ParsecSDKBridge: ParsecService
 			do {
 				let decoder = JSONDecoder()
 				let config = try decoder.decode(ParsecUserDataVideoConfig.self, from: Data(bytesNoCopy: pointer!, count: strlen(pointer!), deallocator: .none))
-				let videoConfig = config.video[0]
-				DataManager.model.resolutionX = videoConfig.resolutionX
-				DataManager.model.resolutionY = videoConfig.resolutionY
-				DataManager.model.bitrate = videoConfig.encoderMaxBitrate
-				DataManager.model.constantFps = videoConfig.fullFPS
+                let videoConfig = config.video[0]
+                DataManager.model.resolutionX = videoConfig.resolutionX
+                DataManager.model.resolutionY = videoConfig.resolutionY
+                DataManager.model.bitrate = videoConfig.encoderMaxBitrate
+                // Initialize to false on first connect; otherwise keep host value in model
+                if !self.didSetResolution {
+                    DataManager.model.constantFps = false
+                } else {
+                    DataManager.model.constantFps = videoConfig.fullFPS
+                }
 				if !didSetResolution {
 					didSetResolution = true
 					DispatchQueue.main.async {
 						DataManager.model.resolutionX = SettingsHandler.resolution.width
 						DataManager.model.resolutionY = SettingsHandler.resolution.height
-						self.updateHostVideoConfig()
+                        // Push default fullFPS=false along with our desired settings
+                        self.updateHostVideoConfig()
 					}
 				}
 				
@@ -525,8 +531,8 @@ class ParsecSDKBridge: ParsecService
             desiredFps = 60
         }
         videoConfig.video[0].encoderFPS = desiredFps
-        // Ensure host doesn't drop to 30 FPS: request full FPS whenever desired >= 60
-        videoConfig.video[0].fullFPS = desiredFps >= 60
+        // fullFPS strictly follows the user's toggle in the overlay
+        videoConfig.video[0].fullFPS = DataManager.model.constantFps
 		let encoder = JSONEncoder()
 		let data = try! encoder.encode(videoConfig)
 		CParsec.sendUserData(type: .setVideoConfig, message: data)
