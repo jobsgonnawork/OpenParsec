@@ -47,21 +47,23 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
 		let timeoutMs = UInt32(1000 / fps)
         let start = CACurrentMediaTime()
         let t0 = CACurrentMediaTime()
-        let newFrame = CParsec.renderGLFrameDetectNew(timeout: timeoutMs)
+        CParsec.renderGLFrame(timeout: timeoutMs)
         let t1 = CACurrentMediaTime()
         CParsec.debugLastTimeoutMs = timeoutMs
         CParsec.debugLastCallDurationMs = (t1 - t0) * 1000.0
-        if CParsec.fpsMeterEnabled {
-            CParsec.debugRendersInWindow += 1
-            if newFrame { CParsec.debugNewFramesInWindow += 1 }
-        }
+        if CParsec.fpsMeterEnabled { CParsec.debugRendersInWindow += 1 }
 		
 		updateImage()
 
         // FPS measurement: prefer SDK-new-frame signal; fallback to pixel sample when unavailable
         if CParsec.fpsMeterEnabled {
-            if newFrame {
+            // Time-based new frame heuristic: returned significantly before timeout
+            let expectedTimeout = Double(timeoutMs) / 1000.0
+            let callDuration = t1 - t0
+            let isNewFrame = callDuration < expectedTimeout * 0.6
+            if isNewFrame {
                 frameCounter += 1
+                CParsec.debugNewFramesInWindow += 1
             }
             let end = CACurrentMediaTime()
             let windowElapsed = end - lastFpsTimestamp
