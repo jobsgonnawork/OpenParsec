@@ -6,6 +6,16 @@ enum FrameRateMode: Int {
     case fps60 = 1 // Cap at 60 FPS
 }
 
+extension SettingsHandler {
+    static func getDesiredClientFps() -> Int {
+        if #available(iOS 10.3, *) {
+            return (frameRateMode == .fps60) ? 60 : UIScreen.main.maximumFramesPerSecond
+        } else {
+            return 60
+        }
+    }
+}
+
 struct SettingsHandler
 {
 	//public static var renderer:RendererType = .opengl

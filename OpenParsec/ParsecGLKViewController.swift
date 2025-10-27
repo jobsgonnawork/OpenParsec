@@ -52,18 +52,8 @@ class ParsecGLKViewController : ParsecPlayground {
 	private func setupGLKViewController() {
 		glkView.context = EAGLContext(api: .openGLES3)!
 		glkViewController.view = glkView
-        // Apply user-selected frame rate mode
-        if #available(iOS 10.3, *) {
-            switch SettingsHandler.frameRateMode {
-            case .fps60:
-                glkViewController.preferredFramesPerSecond = 60
-            case .auto:
-                let maxFPS = UIScreen.main.maximumFramesPerSecond
-                glkViewController.preferredFramesPerSecond = maxFPS > 0 ? maxFPS : 60
-            }
-        } else {
-            glkViewController.preferredFramesPerSecond = 60
-        }
+        // Apply user-selected frame rate mode via centralized helper
+        glkViewController.preferredFramesPerSecond = SettingsHandler.getDesiredClientFps()
 		self.viewController.addChild(glkViewController)
 		self.viewController.view.addSubview(glkViewController.view)
 		self.glkViewController.didMove(toParent: self.viewController)

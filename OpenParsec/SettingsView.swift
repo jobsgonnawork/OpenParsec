@@ -144,7 +144,12 @@ struct SettingsView:View
 										.tag(FrameRateMode.auto)
 								}
 								.pickerStyle(.menu)
-							}
+								.onChange(of: frameRateMode) { newValue in
+									if !hasProMotion && newValue == .auto {
+										frameRateMode = .fps60
+									}
+								}
+                            }
                         }
                         CatTitle("Misc")
                         CatList()
