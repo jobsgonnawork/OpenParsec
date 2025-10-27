@@ -157,16 +157,14 @@ class ParsecSDKBridge: ParsecService
 
     func renderGLFrameDetectNew(timeout: UInt32) -> Bool {
         hasNewFrameSignal = false
-        let cb: ParsecFrameCallback = { frame, image, opaque in
+        let pre: ParsecPreRenderCallback = { opaque in
             if let opaque = opaque {
                 let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
                 instance.hasNewFrameSignal = true
             }
+            return true
         }
-        // Non-blocking poll to detect if a new frame is available this tick
-        _ = ParsecClientPollFrame(_parsec, UInt8(DEFAULT_STREAM), cb, 0, Unmanaged.passUnretained(self).toOpaque())
-        // Render as usual (will render new frame if available, else previous)
-        _ = ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), nil, nil, timeout)
+        _ = ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), pre, Unmanaged.passUnretained(self).toOpaque(), timeout)
         return hasNewFrameSignal
     }
 	
