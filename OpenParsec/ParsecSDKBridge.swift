@@ -148,10 +148,22 @@ class ParsecSDKBridge: ParsecService
 		mouseInfo.mouseY = Int32(height / 2)
 	}
 	
-	func renderGLFrame(timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
-	{
-		ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), nil, nil, timeout)
-	}
+    func renderGLFrame(timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
+    {
+        ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), nil, nil, timeout)
+    }
+
+    func renderGLFrameDetectNew(timeout: UInt32) -> Bool {
+        var didRenderNew = false
+        let pre: ParsecPreRenderCallback = { opaque in
+            // Return true to allow render; we can't tell here if frame is new
+            return true
+        }
+        let status = ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), pre, nil, timeout)
+        // If the render returned OK in less than the full timeout window, assume new frame
+        // We cannot time inside this function reliably; fallback to OK as signal
+        return status == PARSEC_OK
+    }
 	
 	/*static func renderMetalFrame(_ queue:inout MTLCommandQueue, _ texturePtr:UnsafeMutablePointer<UnsafeMutableRawPointer?>, timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
 	 {

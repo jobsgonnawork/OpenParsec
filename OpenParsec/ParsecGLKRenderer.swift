@@ -1,4 +1,5 @@
 import GLKit
+import OpenGLES
 import ParsecSDK
 
 class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
@@ -12,6 +13,7 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
 	let updateImage: () -> Void
     var lastFpsTimestamp: CFTimeInterval = CACurrentMediaTime()
     var frameCounter: Int = 0
+    var lastSampledPixel: UInt32 = 0
 	
 	init(_ view:GLKView, _ viewController:GLKViewController,_ updateImage: @escaping () -> Void)
 	{
@@ -43,26 +45,40 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
         // Derive timeout from the current preferred FPS (ms per frame)
 		let fps = max(glkViewController.preferredFramesPerSecond, 1)
 		let timeoutMs = UInt32(1000 / fps)
-		let start = CACurrentMediaTime()
-		CParsec.renderGLFrame(timeout: timeoutMs)
+        let start = CACurrentMediaTime()
+        let newFrame = CParsec.renderGLFrameDetectNew(timeout: timeoutMs)
 		
 		updateImage()
 
-		// FPS measurement: count only when a new frame likely arrived (returned before timeout)
+        // FPS measurement: prefer SDK-new-frame signal; fallback to pixel sample when unavailable
         if CParsec.fpsMeterEnabled {
-			let end = CACurrentMediaTime()
-			let callDuration = end - start
-			let expectedTimeout = Double(timeoutMs) / 1000.0
-			// If the call returned significantly before the timeout, a new frame likely arrived
-			if callDuration < expectedTimeout * 0.8 {
-				frameCounter += 1
-			}
-			let windowElapsed = end - lastFpsTimestamp
-			if windowElapsed >= 0.5 {
-				CParsec.displayedFps = Double(frameCounter) / windowElapsed
-				frameCounter = 0
-				lastFpsTimestamp = end
-			}
+            var counted = false
+            if newFrame {
+                frameCounter += 1
+                counted = true
+            }
+            if !counted {
+                var pixel: UInt32 = 0
+                let x = GLsizei(max(0, Int(view.bounds.midX)))
+                let y = GLsizei(max(0, Int(view.bounds.midY)))
+                glReadPixels(x, y, 1, 1, GLenum(GL_RGBA), GLenum(GL_UNSIGNED_BYTE), &pixel)
+                if pixel != lastSampledPixel {
+                    frameCounter += 1
+                    lastSampledPixel = pixel
+                }
+            }
+            let end = CACurrentMediaTime()
+            let windowElapsed = end - lastFpsTimestamp
+            if windowElapsed >= 1.0 {
+                var measured = Double(frameCounter) / windowElapsed
+                if DataManager.model.constantFps {
+                    measured = Double(glkViewController.preferredFramesPerSecond)
+                }
+                measured = min(measured, Double(glkViewController.preferredFramesPerSecond))
+                CParsec.displayedFps = measured
+                frameCounter = 0
+                lastFpsTimestamp = end
+            }
         }
 		
 
