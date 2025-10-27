@@ -59,7 +59,12 @@ struct ParsecStatusBar : View {
 			let str = String.fromBuffer(&pcs.decoder.0.name.0, length:16)
 			let fps = Int(round(CParsec.displayedFps))
 			let target = Int(UIScreen.main.maximumFramesPerSecond)
-			metricInfo = "Decode \(String(format:"%.2f", pcs.`self`.metrics.0.decodeLatency))ms    Encode \(String(format:"%.2f", pcs.`self`.metrics.0.encodeLatency))ms    Network \(String(format:"%.2f", pcs.`self`.metrics.0.networkLatency))ms    Bitrate \(String(format:"%.2f", pcs.`self`.metrics.0.bitrate))Mbps    \(pcs.decoder.0.h265 ? "H265" : "H264") \(pcs.decoder.0.width)x\(pcs.decoder.0.height) \(fps) FPS (target \(target)) \(pcs.decoder.0.color444 ? "4:4:4" : "4:2:0") \(str)"
+			let dbg = String(format: "t=%dms call=%.1fms nf=%d r=%d",
+						 CParsec.debugLastTimeoutMs,
+						 CParsec.debugLastCallDurationMs,
+						 CParsec.debugNewFramesInWindow,
+						 CParsec.debugRendersInWindow)
+			metricInfo = "Decode \(String(format:"%.2f", pcs.`self`.metrics.0.decodeLatency))ms    Encode \(String(format:"%.2f", pcs.`self`.metrics.0.encodeLatency))ms    Network \(String(format:"%.2f", pcs.`self`.metrics.0.networkLatency))ms    Bitrate \(String(format:"%.2f", pcs.`self`.metrics.0.bitrate))Mbps    \(pcs.decoder.0.h265 ? "H265" : "H264") \(pcs.decoder.0.width)x\(pcs.decoder.0.height) \(fps) FPS (target \(target))    [\(dbg)] \(pcs.decoder.0.color444 ? "4:4:4" : "4:2:0") \(str)"
 		}
 	}
 }

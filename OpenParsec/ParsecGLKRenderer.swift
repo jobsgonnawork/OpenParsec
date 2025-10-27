@@ -46,7 +46,15 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
 		let fps = max(glkViewController.preferredFramesPerSecond, 1)
 		let timeoutMs = UInt32(1000 / fps)
         let start = CACurrentMediaTime()
+        let t0 = CACurrentMediaTime()
         let newFrame = CParsec.renderGLFrameDetectNew(timeout: timeoutMs)
+        let t1 = CACurrentMediaTime()
+        CParsec.debugLastTimeoutMs = timeoutMs
+        CParsec.debugLastCallDurationMs = (t1 - t0) * 1000.0
+        if CParsec.fpsMeterEnabled {
+            CParsec.debugRendersInWindow += 1
+            if newFrame { CParsec.debugNewFramesInWindow += 1 }
+        }
 		
 		updateImage()
 
@@ -64,6 +72,9 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
                 }
                 measured = min(measured, Double(glkViewController.preferredFramesPerSecond))
                 CParsec.displayedFps = measured
+                // reset debug counters
+                CParsec.debugNewFramesInWindow = 0
+                CParsec.debugRendersInWindow = 0
                 frameCounter = 0
                 lastFpsTimestamp = end
             }

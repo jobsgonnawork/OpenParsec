@@ -92,6 +92,10 @@ class CParsec
 {
 	public static var displayedFps: Double = 0
     public static var fpsMeterEnabled: Bool = false
+    public static var debugLastTimeoutMs: UInt32 = 0
+    public static var debugLastCallDurationMs: Double = 0
+    public static var debugNewFramesInWindow: Int = 0
+    public static var debugRendersInWindow: Int = 0
 
 	public static var hostWidth:Float {
 		return parsecImpl.hostWidth
