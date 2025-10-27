@@ -57,8 +57,7 @@ class ParsecSDKBridge: ParsecService
 	var didSetResolution = false
 	
 	public var mouseInfo = MouseInfo()
-    private var preRenderSignaled = false
-    private var hasNewFrameSignal = false
+    
 	
 	init() {
 		print("Parsec SDK Version: " + String(ParsecSDKBridge.PARSEC_VER))
@@ -155,18 +154,7 @@ class ParsecSDKBridge: ParsecService
         ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), nil, nil, timeout)
     }
 
-    func renderGLFrameDetectNew(timeout: UInt32) -> Bool {
-        hasNewFrameSignal = false
-        let pre: ParsecPreRenderCallback = { opaque in
-            if let opaque = opaque {
-                let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
-                instance.hasNewFrameSignal = true
-            }
-            return true
-        }
-        _ = ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), pre, Unmanaged.passUnretained(self).toOpaque(), timeout)
-        return hasNewFrameSignal
-    }
+    
 	
 	/*static func renderMetalFrame(_ queue:inout MTLCommandQueue, _ texturePtr:UnsafeMutablePointer<UnsafeMutableRawPointer?>, timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
 	 {

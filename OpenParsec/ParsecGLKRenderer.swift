@@ -1,5 +1,4 @@
 import GLKit
-import OpenGLES
 import ParsecSDK
 
 class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
@@ -11,9 +10,7 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
 
 	var lastImg: CGImage?
 	let updateImage: () -> Void
-    var lastFpsTimestamp: CFTimeInterval = CACurrentMediaTime()
-    var frameCounter: Int = 0
-    var lastSampledPixel: UInt32 = 0
+    
 	
 	init(_ view:GLKView, _ viewController:GLKViewController,_ updateImage: @escaping () -> Void)
 	{
@@ -45,42 +42,11 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
         // Derive timeout from the current preferred FPS (ms per frame)
 		let fps = max(glkViewController.preferredFramesPerSecond, 1)
 		let timeoutMs = UInt32(1000 / fps)
-        let start = CACurrentMediaTime()
-        let t0 = CACurrentMediaTime()
         CParsec.renderGLFrame(timeout: timeoutMs)
-        let t1 = CACurrentMediaTime()
-        CParsec.debugLastTimeoutMs = timeoutMs
-        CParsec.debugLastCallDurationMs = (t1 - t0) * 1000.0
-        if CParsec.fpsMeterEnabled { CParsec.debugRendersInWindow += 1 }
 		
 		updateImage()
 
-        // FPS measurement: prefer SDK-new-frame signal; fallback to pixel sample when unavailable
-        if CParsec.fpsMeterEnabled {
-            // Time-based new frame heuristic: returned significantly before timeout
-            let expectedTimeout = Double(timeoutMs) / 1000.0
-            let callDuration = t1 - t0
-            let isNewFrame = callDuration < expectedTimeout * 0.6
-            if isNewFrame {
-                frameCounter += 1
-                CParsec.debugNewFramesInWindow += 1
-            }
-            let end = CACurrentMediaTime()
-            let windowElapsed = end - lastFpsTimestamp
-            if windowElapsed >= 1.0 {
-                var measured = Double(frameCounter) / windowElapsed
-                if DataManager.model.constantFps {
-                    measured = Double(glkViewController.preferredFramesPerSecond)
-                }
-                measured = min(measured, Double(glkViewController.preferredFramesPerSecond))
-                CParsec.displayedFps = measured
-                // reset debug counters
-                CParsec.debugNewFramesInWindow = 0
-                CParsec.debugRendersInWindow = 0
-                frameCounter = 0
-                lastFpsTimestamp = end
-            }
-        }
+        
 		
 
 //		glFinish()
