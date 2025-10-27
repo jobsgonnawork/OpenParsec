@@ -57,6 +57,7 @@ class ParsecSDKBridge: ParsecService
 	var didSetResolution = false
 	
 	public var mouseInfo = MouseInfo()
+    private var preRenderSignaled = false
 	
 	init() {
 		print("Parsec SDK Version: " + String(ParsecSDKBridge.PARSEC_VER))
@@ -154,15 +155,16 @@ class ParsecSDKBridge: ParsecService
     }
 
     func renderGLFrameDetectNew(timeout: UInt32) -> Bool {
-        var didRenderNew = false
+        preRenderSignaled = false
         let pre: ParsecPreRenderCallback = { opaque in
-            // Return true to allow render; we can't tell here if frame is new
+            if let opaque = opaque {
+                let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
+                instance.preRenderSignaled = true
+            }
             return true
         }
-        let status = ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), pre, nil, timeout)
-        // If the render returned OK in less than the full timeout window, assume new frame
-        // We cannot time inside this function reliably; fallback to OK as signal
-        return status == PARSEC_OK
+        _ = ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), pre, Unmanaged.passUnretained(self).toOpaque(), timeout)
+        return preRenderSignaled
     }
 	
 	/*static func renderMetalFrame(_ queue:inout MTLCommandQueue, _ texturePtr:UnsafeMutablePointer<UnsafeMutableRawPointer?>, timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.

@@ -52,20 +52,8 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
 
         // FPS measurement: prefer SDK-new-frame signal; fallback to pixel sample when unavailable
         if CParsec.fpsMeterEnabled {
-            var counted = false
             if newFrame {
                 frameCounter += 1
-                counted = true
-            }
-            if !counted {
-                var pixel: UInt32 = 0
-                let x = GLsizei(max(0, Int(view.bounds.midX)))
-                let y = GLsizei(max(0, Int(view.bounds.midY)))
-                glReadPixels(x, y, 1, 1, GLenum(GL_RGBA), GLenum(GL_UNSIGNED_BYTE), &pixel)
-                if pixel != lastSampledPixel {
-                    frameCounter += 1
-                    lastSampledPixel = pixel
-                }
             }
             let end = CACurrentMediaTime()
             let windowElapsed = end - lastFpsTimestamp
