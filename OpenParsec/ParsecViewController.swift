@@ -182,22 +182,20 @@ class ParsecViewController :UIViewController {
 			// Cancel any existing timer for this key
 			keyRepeatTimers[key]?.invalidate()
 			
-			// Start a timer for key repeat after initial delay
-			let timer = Timer.scheduledTimer(withTimeInterval: keyRepeatInitialDelay, repeats: false) { [weak self] initialTimer in
-				guard let self = self else { return }
-				
-				// After initial delay, start repeating at regular interval
-				let repeatTimer = Timer.scheduledTimer(withTimeInterval: self.keyRepeatInterval, repeats: true) { [weak self] _ in
-					guard let self = self else { return }
-					
-					// Send key release and press to simulate key repeat
-					CParsec.sendKeyboardMessage(event: KeyBoardKeyEvent(input: key, isPressBegin: false))
-					CParsec.sendKeyboardMessage(event: KeyBoardKeyEvent(input: key, isPressBegin: true))
-				}
-				
-				// Store the repeat timer
-				self.keyRepeatTimers[key] = repeatTimer
+		// Start a timer for key repeat after initial delay
+		let timer = Timer.scheduledTimer(withTimeInterval: keyRepeatInitialDelay, repeats: false) { [weak self] initialTimer in
+			guard let self = self else { return }
+			
+			// After initial delay, start repeating at regular interval
+			let repeatTimer = Timer.scheduledTimer(withTimeInterval: self.keyRepeatInterval, repeats: true) { _ in
+				// Send key release and press to simulate key repeat
+				CParsec.sendKeyboardMessage(event: KeyBoardKeyEvent(input: key, isPressBegin: false))
+				CParsec.sendKeyboardMessage(event: KeyBoardKeyEvent(input: key, isPressBegin: true))
 			}
+			
+			// Store the repeat timer
+			self.keyRepeatTimers[key] = repeatTimer
+		}
 			
 			// Store the initial delay timer
 			keyRepeatTimers[key] = timer
