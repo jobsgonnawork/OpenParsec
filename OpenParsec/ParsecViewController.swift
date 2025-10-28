@@ -30,6 +30,11 @@ class ParsecViewController :UIViewController {
 	var keyboardAccessoriesView : UIView?
 	var keyboardHeight : CGFloat = 0.0
 	
+	// Key repeat handling
+	private var keyRepeatTimers: [UIKey: Timer] = [:]
+	private let keyRepeatInitialDelay: TimeInterval = 0.5 // 500ms before repeat starts
+	private let keyRepeatInterval: TimeInterval = 0.033 // 33ms between repeats (~30 keys per second)
+	
 	override var prefersPointerLocked: Bool {
 		return true
 	}
@@ -155,25 +160,66 @@ class ParsecViewController :UIViewController {
 			parent.setChildForHomeIndicatorAutoHidden(nil)
 			parent.setChildViewControllerForPointerLock(nil)
 		}
+		
+		// Clean up any active key repeat timers
+		for (_, timer) in keyRepeatTimers {
+			timer.invalidate()
+		}
+		keyRepeatTimers.removeAll()
+		
 		NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
 		NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
 	}
 	
 	
 	override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-		
 		for press in presses {
-			CParsec.sendKeyboardMessage(event:KeyBoardKeyEvent(input: press.key, isPressBegin: true) )
+			guard let key = press.key else { continue }
+			
+			// Send initial key press
+			CParsec.sendKeyboardMessage(event: KeyBoardKeyEvent(input: key, isPressBegin: true))
+			
+			// Cancel any existing timer for this key
+			keyRepeatTimers[key]?.invalidate()
+			
+			// Start a timer for key repeat after initial delay
+			let timer = Timer.scheduledTimer(withTimeInterval: keyRepeatInitialDelay, repeats: false) { [weak self] initialTimer in
+				guard let self = self else { return }
+				
+				// After initial delay, start repeating at regular interval
+				let repeatTimer = Timer.scheduledTimer(withTimeInterval: self.keyRepeatInterval, repeats: true) { [weak self] _ in
+					guard let self = self else { return }
+					
+					// Send key release and press to simulate key repeat
+					CParsec.sendKeyboardMessage(event: KeyBoardKeyEvent(input: key, isPressBegin: false))
+					CParsec.sendKeyboardMessage(event: KeyBoardKeyEvent(input: key, isPressBegin: true))
+				}
+				
+				// Store the repeat timer
+				self.keyRepeatTimers[key] = repeatTimer
+			}
+			
+			// Store the initial delay timer
+			keyRepeatTimers[key] = timer
 		}
-		
 	}
 	
-	override func pressesEnded (_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-		
+	override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
 		for press in presses {
-			CParsec.sendKeyboardMessage(event:KeyBoardKeyEvent(input: press.key, isPressBegin: false) )
+			guard let key = press.key else { continue }
+			
+			// Cancel any repeat timer for this key
+			keyRepeatTimers[key]?.invalidate()
+			keyRepeatTimers[key] = nil
+			
+			// Send key release
+			CParsec.sendKeyboardMessage(event: KeyBoardKeyEvent(input: key, isPressBegin: false))
 		}
-		
+	}
+	
+	override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
+		// Handle cancelled presses the same as ended presses
+		pressesEnded(presses, with: event)
 	}
 	
 	@objc func keyboardWillShow(_ notification: Notification) {
