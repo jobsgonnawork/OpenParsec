@@ -135,6 +135,8 @@ struct SettingsView:View
 						.onChange(of: encoderFPS) { newValue in
 							let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
 							if newValue == 120 && !supports120 { encoderFPS = 60 }
+							DataManager.model.encoderFPS = encoderFPS
+							CParsec.updateHostVideoConfig()
 						}
 					}
                             CatItem("Decoder")
@@ -189,10 +191,8 @@ struct SettingsView:View
 		SettingsHandler.noOverlay = noOverlay
 		SettingsHandler.hideStatusBar = hideStatusBar
 		SettingsHandler.mouseSensitivity = mouseSensitivity
-		SettingsHandler.encoderFPS = encoderFPS
 		SettingsHandler.save()
-		DataManager.model.encoderFPS = encoderFPS
-		CParsec.updateHostVideoConfig()
+		SettingsHandler.encoderFPS = encoderFPS
 		
 		visible = false
 	}
