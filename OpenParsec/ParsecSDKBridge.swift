@@ -146,7 +146,7 @@ class ParsecSDKBridge: ParsecService
 							CVPixelBufferCreateWithPlanarBytes(nil,
 								Int(frame.fullWidth),
 								Int(frame.fullHeight),
-								kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+								kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
 								nil,
 								ySize + uvSize,
 								2,
@@ -164,6 +164,12 @@ class ParsecSDKBridge: ParsecService
 			}
 			if status != kCVReturnSuccess { return nil }
 			guard let pb = pixelBuffer else { return nil }
+			// Attach Rec.709 video-range color info to restore contrast
+			CVBufferSetAttachment(pb, kCVImageBufferYCbCrMatrixKey, kCVImageBufferYCbCrMatrix_ITU_R_709_2, .shouldPropagate)
+			CVBufferSetAttachment(pb, kCVImageBufferColorPrimariesKey, kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+			CVBufferSetAttachment(pb, kCVImageBufferTransferFunctionKey, kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
+			let cs = CGColorSpace(name: CGColorSpace.sRGB)!
+			CVBufferSetAttachment(pb, kCVImageBufferCGColorSpaceKey, cs, .shouldPropagate)
 			let ci = CIImage(cvPixelBuffer: pb)
 			return ciContext.createCGImage(ci, from: CGRect(x: 0, y: 0, width: width, height: height))
 		default:

@@ -80,6 +80,8 @@ class ParsecViewController :UIViewController {
 		} else {
 			glkView.viewDidLoad()
 		}
+		// Ensure Parsec mouse coordinate mapping is correct on startup
+		CParsec.setFrame(view.bounds.size.width, view.bounds.size.height, UIScreen.main.scale)
 		touchController.viewDidLoad()
 		gamePadController.viewDidLoad()
 		
