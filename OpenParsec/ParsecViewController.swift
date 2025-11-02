@@ -80,6 +80,8 @@ class ParsecViewController :UIViewController {
 				self.videoView?.image = UIImage(cgImage: cg)
 				self.updateImage()
 			}
+			// Ensure Parsec knows the client view dimensions for absolute mouse mapping
+			CParsec.setFrame(view.bounds.width, view.bounds.height, UIScreen.main.scale)
 		} else {
 			glkView.viewDidLoad()
 		}
@@ -151,8 +153,7 @@ class ParsecViewController :UIViewController {
 	@objc func handleHover(_ recognizer: UIHoverGestureRecognizer) {
 		let location = recognizer.location(in: recognizer.view)
 		if SettingsHandler.cursorMode == .direct {
-			let (hx, hy) = CursorPositionHelper.toHost(Int(location.x), Int(location.y))
-			CParsec.sendMousePosition(Int32(hx), Int32(hy))
+			CParsec.sendMousePosition(Int32(location.x), Int32(location.y))
 		}
 	}
 	
@@ -240,8 +241,7 @@ extension ParsecViewController : UIGestureRecognizerDelegate {
 
 			if SettingsHandler.cursorMode == .direct {
 				let position = gestureRecognizer.location(in: gestureRecognizer.view)
-				let (hx, hy) = CursorPositionHelper.toHost(Int(position.x), Int(position.y))
-				CParsec.sendMousePosition(Int32(hx), Int32(hy))
+				CParsec.sendMousePosition(Int32(position.x), Int32(position.y))
 			} else {
 				let delta = gestureRecognizer.velocity(in: gestureRecognizer.view)
 				CParsec.sendMouseDelta(Int32(Float(delta.x) / 60 * SettingsHandler.mouseSensitivity), Int32(Float(delta.y) / 60 * SettingsHandler.mouseSensitivity))
