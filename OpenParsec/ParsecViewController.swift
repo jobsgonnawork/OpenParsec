@@ -76,7 +76,9 @@ class ParsecViewController :UIViewController {
 			videoView?.isUserInteractionEnabled = true
 			if let v = videoView { view.addSubview(v) }
 			CParsec.enablePollFrameRendering { [weak self] cg in
-				self?.videoView?.image = UIImage(cgImage: cg)
+				guard let self = self else { return }
+				self.videoView?.image = UIImage(cgImage: cg)
+				self.updateImage()
 			}
 		} else {
 			glkView.viewDidLoad()
