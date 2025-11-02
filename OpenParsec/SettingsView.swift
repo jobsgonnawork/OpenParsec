@@ -131,16 +131,16 @@ struct SettingsView:View
 									Choice("Prefer H.265", DecoderPref.h265)
 								])
                             }
-					CatItem("Host FPS")
-					{
-						let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
-						Menu("\(encoderFPS) fps") {
-							Button("30 fps") { encoderFPS = 30 }
-							Button("60 fps") { encoderFPS = 60 }
-							Button("120 fps") { if supports120 { encoderFPS = 120 } }
-								.disabled(!supports120)
-						}
-					}
+							CatItem("Host FPS")
+							{
+								let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
+								let fpsOptions: [Choice<Int>] = [
+									Choice("30 fps", 30),
+									Choice("60 fps", 60),
+									Choice("120 fps (ProMotion)", 120, !supports120)
+								]
+								MultiPicker(selection:$encoderFPS, options: fpsOptions)
+							}
                         }
                         CatTitle("Misc")
                         CatList()

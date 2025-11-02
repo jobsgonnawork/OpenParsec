@@ -87,14 +87,16 @@ struct CatItem<Content:View>:View
  */
 struct Choice<T: Hashable>
 {
-	var label:String
-	var value:T
-	
-	init(_ label:String, _ value:T)
-	{
-		self.label = label;
-		self.value = value;
-	}
+    var label:String
+    var value:T
+    var isDisabled: Bool
+    
+    init(_ label:String, _ value:T, _ isDisabled: Bool = false)
+    {
+        self.label = label
+        self.value = value
+        self.isDisabled = isDisabled
+    }
 }
 
 /**
@@ -115,13 +117,17 @@ struct SegmentPicker<SelectionValue:Hashable>:View
 	
 	var body:some View
 	{
-		Picker("", selection:selection)
-		{
-			ForEach(options.indices, id:\.self)
-			{ i in
-				Text(options[i].label).tag(options[i].value)
-			}
-		}
+        Picker("", selection:selection)
+        {
+            ForEach(options.indices, id:\.self)
+            { i in
+                let option = options[i]
+                Text(option.label)
+                    .foregroundColor(option.isDisabled ? .gray : .primary)
+                    .tag(option.value)
+                    .disabled(option.isDisabled)
+            }
+        }
 		.pickerStyle(.segmented)
 	}
 }
@@ -193,10 +199,11 @@ struct MultiPicker<SelectionValue:Hashable>:View
 	
 	func genActionSheet() -> ActionSheet
 	{
-		let buttons = options.enumerated().map
-		{ i, option in
-			Alert.Button.default(Text(option.value == selection.wrappedValue ? "    \(option.label)  ✓" : option.label), action:{select(option)})
-		}
+            let buttons = options.enumerated().map
+            { i, option in
+                let label = option.isDisabled ? "\(option.label) (Unsupported)" : option.label
+                return Alert.Button.default(Text(option.value == selection.wrappedValue ? "    \(label)  ✓" : label), action:{ if !option.isDisabled { select(option) } })
+            }
 		return ActionSheet(title:Text("Pick your preference:"), buttons:buttons + [Alert.Button.cancel()])
 	}
 	
