@@ -6,6 +6,16 @@ class AppDelegate:UIResponder, UIApplicationDelegate
 	func application(_ application:UIApplication, didFinishLaunchingWithOptions launchOptions:[UIApplication.LaunchOptionsKey: Any]?) -> Bool
 	{
 		// Override point for customization after application launch.
+		// Ensure Logs directory exists and has a file so the Files app shows our container
+		let fm = FileManager.default
+		if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+			let logsDir = docs.appendingPathComponent("Logs", isDirectory: true)
+			try? fm.createDirectory(at: logsDir, withIntermediateDirectories: true)
+			let logURL = logsDir.appendingPathComponent("OpenParsec.log")
+			if !fm.fileExists(atPath: logURL.path) {
+				fm.createFile(atPath: logURL.path, contents: Data())
+			}
+		}
 		UTMViewControllerPatches.patchAll()
 		return true
 	}

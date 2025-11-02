@@ -265,6 +265,14 @@ class ParsecSDKBridge: ParsecService
 			{ (level, msg, opaque) in
 				let line = "[\(level == LOG_DEBUG ? "D" : "I")] \(String(cString: msg!))"
 				print(line)
+				if let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first {
+					let url = docs.appendingPathComponent("Logs/OpenParsec.log")
+					if let data = (line + "\n").data(using: .utf8), let handle = try? FileHandle(forWritingTo: url) {
+						handle.seekToEndOfFile()
+						handle.write(data)
+						try? handle.close()
+					}
+				}
 			}, nil)
 		
 		audio_init(&_audio)
