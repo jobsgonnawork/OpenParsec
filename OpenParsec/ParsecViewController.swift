@@ -151,7 +151,8 @@ class ParsecViewController :UIViewController {
 	@objc func handleHover(_ recognizer: UIHoverGestureRecognizer) {
 		let location = recognizer.location(in: recognizer.view)
 		if SettingsHandler.cursorMode == .direct {
-			CParsec.sendMousePosition(Int32(location.x), Int32(location.y))
+			let (hx, hy) = CursorPositionHelper.toHost(Int(location.x), Int(location.y))
+			CParsec.sendMousePosition(Int32(hx), Int32(hy))
 		}
 	}
 	
@@ -239,7 +240,8 @@ extension ParsecViewController : UIGestureRecognizerDelegate {
 
 			if SettingsHandler.cursorMode == .direct {
 				let position = gestureRecognizer.location(in: gestureRecognizer.view)
-				CParsec.sendMousePosition(Int32(position.x), Int32(position.y))
+				let (hx, hy) = CursorPositionHelper.toHost(Int(position.x), Int(position.y))
+				CParsec.sendMousePosition(Int32(hx), Int32(hy))
 			} else {
 				let delta = gestureRecognizer.velocity(in: gestureRecognizer.view)
 				CParsec.sendMouseDelta(Int32(Float(delta.x) / 60 * SettingsHandler.mouseSensitivity), Int32(Float(delta.y) / 60 * SettingsHandler.mouseSensitivity))
