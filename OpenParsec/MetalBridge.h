@@ -1,6 +1,6 @@
 #import <Foundation/Foundation.h>
 #import <Metal/Metal.h>
-#import "parsec.h"
+#import <ParsecSDK/parsec.h>
 
 static inline ParsecStatus ParsecMetalRenderWrapper(Parsec *ps, uint8_t stream, id<MTLCommandQueue> cq, id<MTLTexture> target, ParsecPreRenderCallback pre, const void *opaque, uint32_t timeout) {
     ParsecMetalCommandQueue *cqPtr = (ParsecMetalCommandQueue *)&cq;
