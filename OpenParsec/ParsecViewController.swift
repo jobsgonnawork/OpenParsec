@@ -73,21 +73,17 @@ class ParsecViewController :UIViewController {
 	}
 	
 	override func viewDidLoad() {
-		if SettingsHandler.usePollFrameRenderer {
-			videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
-			videoView?.contentMode = .scaleAspectFit
-			videoView?.isUserInteractionEnabled = true
-			if let v = videoView { view.addSubview(v) }
-			CParsec.enablePollFrameRendering { [weak self] cg in
-				guard let self = self else { return }
-				self.videoView?.image = UIImage(cgImage: cg)
-				self.updateImage()
-			}
-			// Ensure Parsec knows the client view dimensions for absolute mouse mapping
-			CParsec.setFrame(view.bounds.width, view.bounds.height, UIScreen.main.scale)
-		} else {
-			glkView.viewDidLoad()
+		videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+		videoView?.contentMode = .scaleAspectFit
+		videoView?.isUserInteractionEnabled = true
+		if let v = videoView { view.addSubview(v) }
+		CParsec.enablePollFrameRendering { [weak self] cg in
+			guard let self = self else { return }
+			self.videoView?.image = UIImage(cgImage: cg)
+			self.updateImage()
 		}
+		// Ensure Parsec knows the client view dimensions for absolute mouse mapping
+		CParsec.setFrame(view.bounds.width, view.bounds.height, UIScreen.main.scale)
 		touchController.viewDidLoad()
 		gamePadController.viewDidLoad()
 		
@@ -192,11 +188,7 @@ class ParsecViewController :UIViewController {
 		let h = size.height
 		let w = size.width
 		
-		if SettingsHandler.usePollFrameRenderer {
-			videoView?.frame.size = CGSize(width: w, height: h)
-		} else {
-			self.glkView.updateSize(width: w, height: h)
-		}
+		videoView?.frame.size = CGSize(width: w, height: h)
 		CParsec.setFrame(w, h, UIScreen.main.scale)
 	}
 	
