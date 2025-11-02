@@ -2,6 +2,7 @@ import ParsecSDK
 import SwiftUI
 import CoreGraphics
 import GLKit
+import MetalKit
 
 class ParsecResolution : Hashable {
 	var width : Int
@@ -86,6 +87,7 @@ protocol ParsecService {
 	func sendUserData(type: ParsecUserDataType, message: Data)
 	func updateHostVideoConfig()
 	func enablePollFrameRendering(_ consumer: @escaping (CGImage) -> Void)
+    func enableMetalRendering(_ view: MTKView)
 }
 
 class CParsec
@@ -155,6 +157,10 @@ class CParsec
 	static func enablePollFrameRendering(_ consumer: @escaping (CGImage) -> Void) {
 		parsecImpl.enablePollFrameRendering(consumer)
 	}
+
+    static func enableMetalRendering(_ view: MTKView) {
+        parsecImpl.enableMetalRendering(view)
+    }
 	
 	static func setMuted(_ muted:Bool)
 	{

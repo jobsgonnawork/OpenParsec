@@ -4,6 +4,8 @@ import UIKit
 import QuartzCore
 import CoreImage
 import CoreVideo
+import Metal
+import MetalKit
 
 enum RendererType:Int
 {
@@ -91,11 +93,22 @@ class ParsecSDKBridge: ParsecService
 	private var onVideoFrameImage: ((CGImage) -> Void)?
 	private var ciContext = CIContext(options: nil)
 	private var pollFrameItem: DispatchWorkItem?
+	private var metalEnabled = false
+	private weak var metalView: MTKView?
+	private var metalQueue: MTLCommandQueue?
+	private let frameSignal = DispatchSemaphore(value: 0)
+	private var metalRenderItem: DispatchWorkItem?
 
 	private static let framePollThunk: @convention(c) (UnsafePointer<ParsecFrame>?, UnsafeRawPointer?, UnsafeMutableRawPointer?) -> Void = { framePtr, imagePtr, opaque in
 		guard let opaque = opaque, let framePtr = framePtr, let imagePtr = imagePtr else { return }
 		let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
-		instance.handlePolledFrame(frame: framePtr.pointee, imagePtr: imagePtr)
+		if instance.metalEnabled {
+			// Signal a new frame for on-demand Metal rendering (no copy)
+			instance.onPreRenderFrame()
+			instance.frameSignal.signal()
+		} else {
+			instance.handlePolledFrame(frame: framePtr.pointee, imagePtr: imagePtr)
+		}
 	}
 
 	private func handlePolledFrame(frame: ParsecFrame, imagePtr: UnsafeRawPointer) {
@@ -185,7 +198,7 @@ class ParsecSDKBridge: ParsecService
 			let item = DispatchWorkItem { [weak self] in
 				guard let self = self else { return }
 				let opaque = Unmanaged.passUnretained(self).toOpaque()
-				while self.backgroundTaskRunning && self.pollFrameRenderingEnabled {
+				while self.backgroundTaskRunning && self.pollFrameRenderingEnabled && !self.metalEnabled {
 					_ = ParsecClientPollFrame(self._parsec, UInt8(DEFAULT_STREAM), ParsecSDKBridge.framePollThunk, 16, opaque)
 				}
 			}
@@ -193,6 +206,54 @@ class ParsecSDKBridge: ParsecService
 			DispatchQueue.global().async(execute: item)
 		}
 	}
+
+    func enableMetalRendering(_ view: MTKView) {
+        metalEnabled = true
+        pollFrameRenderingEnabled = false
+        metalView = view
+        if metalQueue == nil {
+            if let device = view.device ?? MTLCreateSystemDefaultDevice() {
+                view.device = device
+                metalQueue = device.makeCommandQueue()
+                view.framebufferOnly = false
+                view.isPaused = true
+                view.enableSetNeedsDisplay = false
+            }
+        }
+
+        if metalRenderItem == nil {
+            let item = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                let opaque = Unmanaged.passUnretained(self).toOpaque()
+                while self.backgroundTaskRunning && self.metalEnabled {
+                    // Wait until a new frame is available
+                    _ = self.frameSignal.wait(timeout: .distantFuture)
+                    guard let view = self.metalView, let queue = self.metalQueue else { continue }
+                    autoreleasepool {
+                        guard let layer = view.layer as? CAMetalLayer, let drawable = layer.nextDrawable() else { return }
+                        var cqOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(queue).toOpaque()
+                        var texOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(drawable.texture).toOpaque()
+                        _ = ParsecClientMetalRenderFrame(self._parsec, UInt8(DEFAULT_STREAM), &cqOpaque, &texOpaque, nil, nil, 16)
+                    }
+                }
+            }
+            metalRenderItem = item
+            DispatchQueue.global().async(execute: item)
+        }
+
+        // Start a lightweight PollFrame to signal new frames without copying
+        if pollFrameItem == nil {
+            let item = DispatchWorkItem { [weak self] in
+                guard let self = self else { return }
+                let opaque = Unmanaged.passUnretained(self).toOpaque()
+                while self.backgroundTaskRunning && self.metalEnabled {
+                    _ = ParsecClientPollFrame(self._parsec, UInt8(DEFAULT_STREAM), ParsecSDKBridge.framePollThunk, 100, opaque)
+                }
+            }
+            pollFrameItem = item
+            DispatchQueue.global().async(execute: item)
+        }
+    }
 	
 	init() {
 		print("Parsec SDK Version: " + String(ParsecSDKBridge.PARSEC_VER))
