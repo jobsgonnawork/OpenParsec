@@ -1,6 +1,7 @@
 import ParsecSDK
 import MetalKit
 import UIKit
+import QuartzCore
 
 enum RendererType:Int
 {
@@ -57,6 +58,31 @@ class ParsecSDKBridge: ParsecService
 	var didSetResolution = false
 	
 	public var mouseInfo = MouseInfo()
+
+	// Video FPS tracking
+	private var videoFrameCount: Int = 0
+	private var lastVideoFPSTimestamp: CFTimeInterval = CACurrentMediaTime()
+
+	private func onPreRenderFrame() {
+		videoFrameCount += 1
+		let now = CACurrentMediaTime()
+		let elapsed = now - lastVideoFPSTimestamp
+		if elapsed >= 1.0 {
+			let fps = Double(videoFrameCount) / elapsed
+			DispatchQueue.main.async {
+				DataManager.model.videoFps = fps
+			}
+			videoFrameCount = 0
+			lastVideoFPSTimestamp = now
+		}
+	}
+
+	private static let preRenderThunk: @convention(c) (UnsafeMutableRawPointer?) -> Bool = { opaque in
+		guard let opaque = opaque else { return true }
+		let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
+		instance.onPreRenderFrame()
+		return true
+	}
 	
 	init() {
 		print("Parsec SDK Version: " + String(ParsecSDKBridge.PARSEC_VER))
@@ -150,7 +176,8 @@ class ParsecSDKBridge: ParsecService
 	
 	func renderGLFrame(timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
 	{
-		ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), nil, nil, timeout)
+		let opaque = Unmanaged.passUnretained(self).toOpaque()
+		ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), ParsecSDKBridge.preRenderThunk, opaque, timeout)
 	}
 	
 	/*static func renderMetalFrame(_ queue:inout MTLCommandQueue, _ texturePtr:UnsafeMutablePointer<UnsafeMutableRawPointer?>, timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
