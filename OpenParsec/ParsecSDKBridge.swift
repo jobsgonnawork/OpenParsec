@@ -116,13 +116,15 @@ class ParsecSDKBridge: ParsecService
 			let bytesPerRow = Int(frame.fullWidth) * 4
 			let colorSpace = CGColorSpaceCreateDeviceRGB()
 			let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue))
-			guard let provider = CGDataProvider(dataInfo: nil, data: imagePtr, size: Int(frame.size), releaseData: {_,_,_ in }) else { return nil }
+			let dataCopy = CFDataCreate(kCFAllocatorDefault, imagePtr.assumingMemoryBound(to: UInt8.self), Int(frame.size))
+			guard let cfData = dataCopy, let provider = CGDataProvider(data: cfData) else { return nil }
 			return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
 		case FORMAT_RGBA:
 			let bytesPerRow = Int(frame.fullWidth) * 4
 			let colorSpace = CGColorSpaceCreateDeviceRGB()
 			let bitmapInfo = CGBitmapInfo.byteOrder32Big.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue))
-			guard let provider = CGDataProvider(dataInfo: nil, data: imagePtr, size: Int(frame.size), releaseData: {_,_,_ in }) else { return nil }
+			let dataCopy = CFDataCreate(kCFAllocatorDefault, imagePtr.assumingMemoryBound(to: UInt8.self), Int(frame.size))
+			guard let cfData = dataCopy, let provider = CGDataProvider(data: cfData) else { return nil }
 			return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
 		case FORMAT_NV12:
 			let yStride = Int(frame.fullWidth)
@@ -148,10 +150,10 @@ class ParsecSDKBridge: ParsecService
 								nil,
 								ySize + uvSize,
 								2,
-								basePtr.baseAddress,
-								widthPtr.baseAddress,
-								heightPtr.baseAddress,
-								rowPtr.baseAddress,
+								basePtr.baseAddress!,
+								widthPtr.baseAddress!,
+								heightPtr.baseAddress!,
+								rowPtr.baseAddress!,
 								nil,
 								nil,
 								nil,
