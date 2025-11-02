@@ -59,17 +59,11 @@ class ParsecSDKBridge: ParsecService
 	
 	public var mouseInfo = MouseInfo()
 
-	// Video FPS tracking
+	// Video FPS tracking (count new frames via pre-render callback)
 	private var videoFrameCount: Int = 0
 	private var lastVideoFPSTimestamp: CFTimeInterval = CACurrentMediaTime()
 
-	private static let framePollThunk: @convention(c) (UnsafePointer<ParsecFrame>?, UnsafeRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, _, opaque in
-		guard let opaque = opaque else { return }
-		let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
-		instance.onVideoFrameArrived()
-	}
-
-	private func onVideoFrameArrived() {
+	private func onPreRenderFrame() {
 		videoFrameCount += 1
 		let now = CACurrentMediaTime()
 		let elapsed = now - lastVideoFPSTimestamp
@@ -81,6 +75,13 @@ class ParsecSDKBridge: ParsecService
 			videoFrameCount = 0
 			lastVideoFPSTimestamp = now
 		}
+	}
+
+	private static let preRenderThunk: @convention(c) (UnsafeMutableRawPointer?) -> Bool = { opaque in
+		guard let opaque = opaque else { return true }
+		let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
+		instance.onPreRenderFrame()
+		return true
 	}
 	
 	init() {
@@ -175,7 +176,8 @@ class ParsecSDKBridge: ParsecService
 	
 	func renderGLFrame(timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
 	{
-		ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), nil, nil, timeout)
+		let opaque = Unmanaged.passUnretained(self).toOpaque()
+		ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), ParsecSDKBridge.preRenderThunk, opaque, timeout)
 	}
 	
 	/*static func renderMetalFrame(_ queue:inout MTLCommandQueue, _ texturePtr:UnsafeMutablePointer<UnsafeMutableRawPointer?>, timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
@@ -527,14 +529,7 @@ class ParsecSDKBridge: ParsecService
 		let mainQueue = DispatchQueue.global()
 		mainQueue.async(execute: item1)
 		mainQueue.async(execute: item2)
-		
-		let item3 = DispatchWorkItem {
-			let opaque = Unmanaged.passUnretained(self).toOpaque()
-			while self.backgroundTaskRunning {
-				_ = ParsecClientPollFrame(self._parsec, UInt8(DEFAULT_STREAM), ParsecSDKBridge.framePollThunk, 100, opaque)
-			}
-		}
-		mainQueue.async(execute: item3)
+		// NOTE: Polling frames into system memory while also using GL render harms performance; rely on pre-render callback instead
 	}
 	
 	func sendUserData(type: ParsecUserDataType, message: Data) {
