@@ -12,6 +12,7 @@ struct SettingsHandler
 	public static var hideStatusBar:Bool = true
 	public static var rightClickPosition:RightClickPosition = .firstFinger
 	public static var encoderFPS:Int = 60
+	public static var useMetalRenderer:Bool = false
 	public static var usePollFrameRenderer:Bool = true
 	
 	public static func load()
@@ -34,6 +35,8 @@ struct SettingsHandler
 		{ hideStatusBar = UserDefaults.standard.bool(forKey:"hideStatusBar") }
 		if UserDefaults.standard.exists(forKey:"encoderFPS")
 		{ encoderFPS = UserDefaults.standard.integer(forKey:"encoderFPS") }
+		if UserDefaults.standard.exists(forKey:"useMetalRenderer")
+		{ useMetalRenderer = UserDefaults.standard.bool(forKey:"useMetalRenderer") }
 		
 		if UserDefaults.standard.exists(forKey:"resolution") {
 			for res in ParsecResolution.resolutions {
@@ -57,6 +60,7 @@ struct SettingsHandler
 		UserDefaults.standard.set(resolution.desc, forKey:"resolution")
 		UserDefaults.standard.set(hideStatusBar, forKey: "hideStatusBar")
 		UserDefaults.standard.set(encoderFPS, forKey: "encoderFPS")
+		UserDefaults.standard.set(useMetalRenderer, forKey: "useMetalRenderer")
 	}
 }
 

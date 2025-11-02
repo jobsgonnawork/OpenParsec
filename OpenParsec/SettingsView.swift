@@ -14,6 +14,7 @@ struct SettingsView:View
 	@State var noOverlay:Bool = SettingsHandler.noOverlay
 	@State var hideStatusBar:Bool = SettingsHandler.hideStatusBar
 	@State var encoderFPS:Int = SettingsHandler.encoderFPS
+	@State var useMetalRenderer:Bool = SettingsHandler.useMetalRenderer
 	
 	let resolutionChoices : [Choice<ParsecResolution>]
 
@@ -110,6 +111,14 @@ struct SettingsView:View
                         CatTitle("Graphics")
                         CatList()
                         {
+                            CatItem("Renderer")
+                            {
+                                MultiPicker(selection:$useMetalRenderer, options:
+                                [
+                                    Choice("Compatibility", false),
+                                    Choice("Metal (beta)", true)
+                                ])
+                            }
                             /*CatItem("Renderer")
                             {
 								SegmentPicker(selection:$renderer, options:
@@ -185,6 +194,7 @@ struct SettingsView:View
 		SettingsHandler.noOverlay = noOverlay
 		SettingsHandler.hideStatusBar = hideStatusBar
 		SettingsHandler.encoderFPS = encoderFPS
+		SettingsHandler.useMetalRenderer = useMetalRenderer
 		SettingsHandler.mouseSensitivity = mouseSensitivity
 		SettingsHandler.save()
 		

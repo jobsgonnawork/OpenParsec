@@ -75,17 +75,30 @@ class ParsecViewController :UIViewController {
 	}
 	
 	override func viewDidLoad() {
-		// On-demand Metal renderer
-		let mtk = MTKView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
-		mtk.isPaused = true
-		mtk.enableSetNeedsDisplay = false
-		mtk.framebufferOnly = false
-		mtk.device = MTLCreateSystemDefaultDevice()
-		mtk.colorPixelFormat = .bgra8Unorm
-		mtk.drawableSize = CGSize(width: mtk.bounds.width * UIScreen.main.scale, height: mtk.bounds.height * UIScreen.main.scale)
-		view.addSubview(mtk)
-		metalView = mtk
-		CParsec.enableMetalRendering(mtk)
+		if SettingsHandler.useMetalRenderer {
+			// On-demand Metal renderer
+			let mtk = MTKView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+			mtk.isPaused = true
+			mtk.enableSetNeedsDisplay = false
+			mtk.framebufferOnly = false
+			mtk.device = MTLCreateSystemDefaultDevice()
+			mtk.colorPixelFormat = .bgra8Unorm
+			mtk.drawableSize = CGSize(width: mtk.bounds.width * UIScreen.main.scale, height: mtk.bounds.height * UIScreen.main.scale)
+			view.addSubview(mtk)
+			metalView = mtk
+			CParsec.enableMetalRendering(mtk)
+		} else {
+			// Compatibility PollFrame renderer
+			videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+			videoView?.contentMode = .scaleAspectFit
+			videoView?.isUserInteractionEnabled = true
+			if let v = videoView { view.addSubview(v) }
+			CParsec.enablePollFrameRendering { [weak self] cg in
+				guard let self = self else { return }
+				self.videoView?.image = UIImage(cgImage: cg)
+				self.updateImage()
+			}
+		}
 		// Ensure Parsec knows the client view dimensions for absolute mouse mapping
 		CParsec.setFrame(view.bounds.width, view.bounds.height, UIScreen.main.scale)
 		touchController.viewDidLoad()
@@ -192,10 +205,11 @@ class ParsecViewController :UIViewController {
 		let h = size.height
 		let w = size.width
 		
-		metalView?.frame.size = CGSize(width: w, height: h)
 		if let mv = metalView {
+			mv.frame.size = CGSize(width: w, height: h)
 			mv.drawableSize = CGSize(width: w * UIScreen.main.scale, height: h * UIScreen.main.scale)
 		}
+		videoView?.frame.size = CGSize(width: w, height: h)
 		CParsec.setFrame(w, h, UIScreen.main.scale)
 	}
 	
