@@ -123,12 +123,6 @@ struct SettingsView:View
 							{
 								MultiPicker(selection:$resolution, options:resolutionChoices)
 							}
-						CatItem("Host FPS")
-						{
-							let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
-							let fpsOptions: [Choice<Int>] = supports120 ? [Choice("30", 30), Choice("60", 60), Choice("120", 120)] : [Choice("30", 30), Choice("60", 60)]
-							MultiPicker(selection:$hostFPS, options: fpsOptions)
-						}
                             CatItem("Decoder")
                             {
 								MultiPicker(selection:$decoder, options:
@@ -136,6 +130,14 @@ struct SettingsView:View
 									Choice("H.264", DecoderPref.h264),
 									Choice("Prefer H.265", DecoderPref.h265)
 								])
+                            }
+                            CatItem("Host FPS")
+                            {
+                                let maxHz = UIScreen.main.maximumFramesPerSecond
+                                let options: [Choice<Int>] = (
+                                    maxHz >= 120 ? [Choice("30", 30), Choice("60", 60), Choice("120", 120)] : [Choice("30", 30), Choice("60", 60)]
+                                )
+                                MultiPicker(selection:$hostFPS, options: options)
                             }
                         }
                         CatTitle("Misc")
@@ -181,9 +183,9 @@ struct SettingsView:View
 		SettingsHandler.noOverlay = noOverlay
 		SettingsHandler.hideStatusBar = hideStatusBar
 		SettingsHandler.mouseSensitivity = mouseSensitivity
-		SettingsHandler.save()
 		DataManager.model.encoderFPS = hostFPS
 		CParsec.updateHostVideoConfig()
+		SettingsHandler.save()
 		
 		visible = false
 	}

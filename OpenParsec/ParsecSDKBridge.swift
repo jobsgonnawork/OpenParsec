@@ -91,8 +91,6 @@ class ParsecSDKBridge: ParsecService
 	private var onVideoFrameImage: ((CGImage) -> Void)?
 	private var ciContext = CIContext(options: nil)
 	private var pollFrameItem: DispatchWorkItem?
-	private var uiFrameCount: Int = 0
-	private var lastUIFPSTimestamp: CFTimeInterval = CACurrentMediaTime()
 
 	private static let framePollThunk: @convention(c) (UnsafePointer<ParsecFrame>?, UnsafeRawPointer?, UnsafeMutableRawPointer?) -> Void = { framePtr, imagePtr, opaque in
 		guard let opaque = opaque, let framePtr = framePtr, let imagePtr = imagePtr else { return }
@@ -105,19 +103,7 @@ class ParsecSDKBridge: ParsecService
 		onPreRenderFrame()
 		guard let consumer = onVideoFrameImage else { return }
 		guard let cg = convertFrameToCGImage(frame: frame, imagePtr: imagePtr) else { return }
-		DispatchQueue.main.async {
-			consumer(cg)
-			// UI FPS based on presented image updates
-			self.uiFrameCount += 1
-			let now = CACurrentMediaTime()
-			let elapsed = now - self.lastUIFPSTimestamp
-			if elapsed >= 1.0 {
-				let fps = Double(self.uiFrameCount) / elapsed
-				DataManager.model.fps = fps
-				self.uiFrameCount = 0
-				self.lastUIFPSTimestamp = now
-			}
-		}
+		DispatchQueue.main.async { consumer(cg) }
 	}
 
 	private func convertFrameToCGImage(frame: ParsecFrame, imagePtr: UnsafeRawPointer) -> CGImage? {
