@@ -28,7 +28,6 @@ class ParsecViewController :UIViewController {
 	var lastImg: CGImage?
 	var hasHardwareMouse: Bool = false
 	var displayLink: CADisplayLink?
-	var hasHardwareMouse: Bool = false
 	
 	var lastLongPressPoint : CGPoint = CGPoint()
 	
