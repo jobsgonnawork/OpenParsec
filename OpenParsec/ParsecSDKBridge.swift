@@ -235,7 +235,7 @@ class ParsecSDKBridge: ParsecService
                             var cqOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(queue).toOpaque()
                             var texOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(drawable.texture).toOpaque()
                             _ = ParsecClientMetalRenderFrame(self._parsec, UInt8(DEFAULT_STREAM), &cqOpaque, &texOpaque, nil, nil, 16)
-                            layer.present(drawable)
+                            drawable.present()
                         }
                     }
                 }
