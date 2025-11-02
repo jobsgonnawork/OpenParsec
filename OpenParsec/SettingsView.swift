@@ -123,22 +123,6 @@ struct SettingsView:View
 							{
 								MultiPicker(selection:$resolution, options:resolutionChoices)
 							}
-					CatItem("Host FPS")
-					{
-						let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
-						Picker("", selection: $encoderFPS) {
-							Text("30").tag(30)
-							Text("60").tag(60)
-							Text("120").tag(120).foregroundColor(supports120 ? Color("Foreground") : Color.gray).disabled(!supports120)
-						}
-						.pickerStyle(.menu)
-						.onChange(of: encoderFPS) { newValue in
-							let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
-							if newValue == 120 && !supports120 { encoderFPS = 60 }
-							DataManager.model.encoderFPS = encoderFPS
-							CParsec.updateHostVideoConfig()
-						}
-					}
                             CatItem("Decoder")
                             {
 								MultiPicker(selection:$decoder, options:
@@ -147,6 +131,16 @@ struct SettingsView:View
 									Choice("Prefer H.265", DecoderPref.h265)
 								])
                             }
+					CatItem("Host FPS")
+					{
+						let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
+						Menu("\(encoderFPS) fps") {
+							Button("30 fps") { encoderFPS = 30 }
+							Button("60 fps") { encoderFPS = 60 }
+							Button("120 fps") { if supports120 { encoderFPS = 120 } }
+								.disabled(!supports120)
+						}
+					}
                         }
                         CatTitle("Misc")
                         CatList()
@@ -190,9 +184,9 @@ struct SettingsView:View
 		SettingsHandler.rightClickPosition = rightClickPosition
 		SettingsHandler.noOverlay = noOverlay
 		SettingsHandler.hideStatusBar = hideStatusBar
+		SettingsHandler.encoderFPS = encoderFPS
 		SettingsHandler.mouseSensitivity = mouseSensitivity
 		SettingsHandler.save()
-		SettingsHandler.encoderFPS = encoderFPS
 		
 		visible = false
 	}

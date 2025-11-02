@@ -326,7 +326,7 @@ class ParsecSDKBridge: ParsecService
 		let pointer = ParsecGetBuffer(_parsec, event.key)
 		switch event.id {
 		case 11:
-				do {
+			do {
 				let decoder = JSONDecoder()
 				let config = try decoder.decode(ParsecUserDataVideoConfig.self, from: Data(bytesNoCopy: pointer!, count: strlen(pointer!), deallocator: .none))
 				let videoConfig = config.video[0]
@@ -334,12 +334,13 @@ class ParsecSDKBridge: ParsecService
 				DataManager.model.resolutionY = videoConfig.resolutionY
 				DataManager.model.bitrate = videoConfig.encoderMaxBitrate
 				DataManager.model.constantFps = videoConfig.fullFPS
-					DataManager.model.encoderFPS = videoConfig.encoderFPS
+				DataManager.model.encoderFPS = videoConfig.encoderFPS
 				if !didSetResolution {
 					didSetResolution = true
 					DispatchQueue.main.async {
 						DataManager.model.resolutionX = SettingsHandler.resolution.width
 						DataManager.model.resolutionY = SettingsHandler.resolution.height
+						DataManager.model.encoderFPS = SettingsHandler.encoderFPS
 						self.updateHostVideoConfig()
 					}
 				}
@@ -644,20 +645,13 @@ class ParsecSDKBridge: ParsecService
 	}
 	
 	func sendUserData(type: ParsecUserDataType, message: Data) {
-		guard let str = String(data: message, encoding: .utf8) else {
-			print("error: failed to encode user data as UTF-8 string")
-			return
-		}
-		str.withCString { cstr in
-			ParsecClientSendUserData(_parsec, type.rawValue, cstr)
+		message.withUnsafeBytes { ptr in
+			let ptr2 = ptr.baseAddress?.assumingMemoryBound(to: CChar.self)
+			ParsecClientSendUserData(_parsec, type.rawValue, ptr2)
 		}
 	}
 	
 	func updateHostVideoConfig() {
-		// Only attempt to send when connected
-		var pcs = ParsecClientStatus()
-		let st = ParsecClientGetStatus(_parsec, &pcs)
-		if st != PARSEC_OK { return }
 		var videoConfig = ParsecUserDataVideoConfig()
 		videoConfig.video[0].resolutionX = DataManager.model.resolutionX
 		videoConfig.video[0].resolutionY = DataManager.model.resolutionY
@@ -665,12 +659,8 @@ class ParsecSDKBridge: ParsecService
 		videoConfig.video[0].fullFPS = DataManager.model.constantFps
 		videoConfig.video[0].output = DataManager.model.output
 		videoConfig.video[0].encoderFPS = DataManager.model.encoderFPS
-		do {
-			let encoder = JSONEncoder()
-			let data = try encoder.encode(videoConfig)
-			CParsec.sendUserData(type: .setVideoConfig, message: data)
-		} catch {
-			print("error: failed to encode video config: \(error)")
-		}
+		let encoder = JSONEncoder()
+		let data = try! encoder.encode(videoConfig)
+		CParsec.sendUserData(type: .setVideoConfig, message: data)
 	}
 }
