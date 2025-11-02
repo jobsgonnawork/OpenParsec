@@ -130,12 +130,36 @@ class ParsecSDKBridge: ParsecService
 			let ySize = yStride * Int(frame.fullHeight)
 			let uvSize = yStride * Int(frame.fullHeight) / 2
 			var pixelBuffer: CVPixelBuffer?
-			let planeBaseAddresses: [UnsafeMutablePointer<UInt8>?] = [UnsafeMutablePointer<UInt8>(mutating: imagePtr.assumingMemoryBound(to: UInt8.self)),
-				UnsafeMutablePointer<UInt8>(mutating: imagePtr.advanced(by: ySize).assumingMemoryBound(to: UInt8.self))]
-			let planeWidths = [Int(frame.fullWidth), Int(frame.fullWidth)]
-			let planeHeights = [Int(frame.fullHeight), Int(frame.fullHeight) / 2]
-			let planeBytesPerRow = [yStride, uvStride]
-			let status = CVPixelBufferCreateWithPlanarBytes(nil, Int(frame.fullWidth), Int(frame.fullHeight), kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, nil, ySize + uvSize, 2, planeBaseAddresses, planeWidths, planeHeights, planeBytesPerRow, nil, nil, nil, &pixelBuffer)
+			var planeBaseAddresses: [UnsafeMutableRawPointer?] = [
+				UnsafeMutableRawPointer(mutating: imagePtr.assumingMemoryBound(to: UInt8.self)),
+				UnsafeMutableRawPointer(mutating: imagePtr.advanced(by: ySize))
+			]
+			var planeWidths = [Int(frame.fullWidth), Int(frame.fullWidth)]
+			var planeHeights = [Int(frame.fullHeight), Int(frame.fullHeight) / 2]
+			var planeBytesPerRow = [yStride, uvStride]
+			let status = planeBaseAddresses.withUnsafeMutableBufferPointer { basePtr in
+				planeWidths.withUnsafeMutableBufferPointer { widthPtr in
+					planeHeights.withUnsafeMutableBufferPointer { heightPtr in
+						planeBytesPerRow.withUnsafeMutableBufferPointer { rowPtr in
+							CVPixelBufferCreateWithPlanarBytes(nil,
+								Int(frame.fullWidth),
+								Int(frame.fullHeight),
+								kCVPixelFormatType_420YpCbCr8BiPlanarFullRange,
+								nil,
+								ySize + uvSize,
+								2,
+								basePtr.baseAddress,
+								widthPtr.baseAddress,
+								heightPtr.baseAddress,
+								rowPtr.baseAddress,
+								nil,
+								nil,
+								nil,
+								&pixelBuffer)
+						}
+					}
+				}
+			}
 			if status != kCVReturnSuccess { return nil }
 			guard let pb = pixelBuffer else { return nil }
 			let ci = CIImage(cvPixelBuffer: pb)
