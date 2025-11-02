@@ -58,7 +58,8 @@ struct ParsecStatusBar : View {
 		if showMenu
 		{
 			let str = String.fromBuffer(&pcs.decoder.0.name.0, length:16)
-			metricInfo = "UI FPS \(String(format: "%.1f", model.fps))    Video FPS \(String(format: "%.1f", model.videoFps))    Decode \(String(format:"%.2f", pcs.`self`.metrics.0.decodeLatency))ms    Encode \(String(format:"%.2f", pcs.`self`.metrics.0.encodeLatency))ms    Network \(String(format:"%.2f", pcs.`self`.metrics.0.networkLatency))ms    Bitrate \(String(format:"%.2f", pcs.`self`.metrics.0.bitrate))Mbps    \(pcs.decoder.0.h265 ? "H265" : "H264") \(pcs.decoder.0.width)x\(pcs.decoder.0.height) \(pcs.decoder.0.color444 ? "4:4:4" : "4:2:0") \(str)"
+			let resWithFps = "\(pcs.decoder.0.width)x\(pcs.decoder.0.height)/\(String(format: "%.1f", model.fps)) fps"
+			metricInfo = "Decode \(String(format:"%.2f", pcs.`self`.metrics.0.decodeLatency))ms    Encode \(String(format:"%.2f", pcs.`self`.metrics.0.encodeLatency))ms    Network \(String(format:"%.2f", pcs.`self`.metrics.0.networkLatency))ms    Bitrate \(String(format:"%.2f", pcs.`self`.metrics.0.bitrate))Mbps    \(pcs.decoder.0.h265 ? "H265" : "H264") \(resWithFps) \(pcs.decoder.0.color444 ? "4:4:4" : "4:2:0") \(str)"
 		}
 	}
 }

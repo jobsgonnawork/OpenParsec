@@ -667,6 +667,7 @@ class ParsecSDKBridge: ParsecService
 		videoConfig.video[0].resolutionY = DataManager.model.resolutionY
 		videoConfig.video[0].encoderMaxBitrate = DataManager.model.bitrate
 		videoConfig.video[0].fullFPS = DataManager.model.constantFps
+		videoConfig.video[0].encoderFPS = DataManager.model.encoderFPS
 		videoConfig.video[0].output = DataManager.model.output
 		let encoder = JSONEncoder()
 		let data = try! encoder.encode(videoConfig)
