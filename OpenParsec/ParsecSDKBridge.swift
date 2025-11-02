@@ -235,7 +235,6 @@ class ParsecSDKBridge: ParsecService
                             var cqOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(queue).toOpaque()
                             var texOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(drawable.texture).toOpaque()
                             let status = ParsecClientMetalRenderFrame(self._parsec, UInt8(DEFAULT_STREAM), &cqOpaque, &texOpaque, nil, nil, 16)
-                            Logger.log("MetalRender status: \(status.rawValue)")
                             drawable.present()
                         }
                     }
@@ -264,9 +263,8 @@ class ParsecSDKBridge: ParsecService
 		
 		ParsecSetLogCallback(
 			{ (level, msg, opaque) in
-				let line = "[\(level == LOG_DEBUG ? \"D\" : \"I\")] \(String(cString:msg!))"
+				let line = "[\(level == LOG_DEBUG ? "D" : "I")] \(String(cString: msg!))"
 				print(line)
-				Logger.log(line)
 			}, nil)
 		
 		audio_init(&_audio)
