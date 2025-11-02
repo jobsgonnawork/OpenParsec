@@ -71,11 +71,13 @@ class ParsecViewController :UIViewController {
 	
 	override func viewDidLoad() {
 		if SettingsHandler.usePollFrameRenderer {
-			videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+				videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
 			videoView?.contentMode = .scaleAspectFit
+				videoView?.isUserInteractionEnabled = false
 			if let v = videoView { view.addSubview(v) }
 			CParsec.enablePollFrameRendering { [weak self] cg in
 				self?.videoView?.image = UIImage(cgImage: cg)
+					self?.updateImage()
 			}
 		} else {
 			glkView.viewDidLoad()
