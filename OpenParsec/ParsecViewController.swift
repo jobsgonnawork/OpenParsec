@@ -25,6 +25,7 @@ class ParsecViewController :UIViewController {
 	var touchController: TouchController!
 	var u:UIImageView?
 	var lastImg: CGImage?
+	var hasHardwareMouse: Bool = false
 	
 	var lastLongPressPoint : CGPoint = CGPoint()
 	
@@ -148,13 +149,35 @@ class ParsecViewController :UIViewController {
 			object: nil
 		)
 		
+		NotificationCenter.default.addObserver(
+			self,
+			selector: #selector(mouseDidConnect(_:)),
+			name: NSNotification.Name.GCMouseDidConnect,
+			object: nil
+		)
+		NotificationCenter.default.addObserver(
+			self,
+			selector: #selector(mouseDidDisconnect(_:)),
+			name: NSNotification.Name.GCMouseDidDisconnect,
+			object: nil
+		)
+		
 	}
 
 	@objc func handleHover(_ recognizer: UIHoverGestureRecognizer) {
+		if hasHardwareMouse { return }
 		let location = recognizer.location(in: recognizer.view)
 		if SettingsHandler.cursorMode == .direct {
 			CParsec.sendMousePosition(Int32(location.x), Int32(location.y))
 		}
+	}
+
+	@objc func mouseDidConnect(_ note: Notification) {
+		hasHardwareMouse = true
+	}
+
+	@objc func mouseDidDisconnect(_ note: Notification) {
+		hasHardwareMouse = false
 	}
 	
 	override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
@@ -240,6 +263,10 @@ extension ParsecViewController : UIGestureRecognizerDelegate {
 		} else if gestureRecognizer.numberOfTouches == 1 {
 
 			if SettingsHandler.cursorMode == .direct {
+				if hasHardwareMouse {
+					// Let GCMouse deliver smooth relative deltas; avoid conflicting absolute events
+					return
+				}
 				let position = gestureRecognizer.location(in: gestureRecognizer.view)
 				CParsec.sendMousePosition(Int32(position.x), Int32(position.y))
 			} else {
