@@ -81,6 +81,8 @@ class ParsecViewController :UIViewController {
 		mtk.enableSetNeedsDisplay = false
 		mtk.framebufferOnly = false
 		mtk.device = MTLCreateSystemDefaultDevice()
+		mtk.colorPixelFormat = .bgra8Unorm
+		mtk.drawableSize = CGSize(width: mtk.bounds.width * UIScreen.main.scale, height: mtk.bounds.height * UIScreen.main.scale)
 		view.addSubview(mtk)
 		metalView = mtk
 		CParsec.enableMetalRendering(mtk)
@@ -191,6 +193,9 @@ class ParsecViewController :UIViewController {
 		let w = size.width
 		
 		metalView?.frame.size = CGSize(width: w, height: h)
+		if let mv = metalView {
+			mv.drawableSize = CGSize(width: w * UIScreen.main.scale, height: h * UIScreen.main.scale)
+		}
 		CParsec.setFrame(w, h, UIScreen.main.scale)
 	}
 	

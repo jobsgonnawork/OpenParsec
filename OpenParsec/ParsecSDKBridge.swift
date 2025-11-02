@@ -230,10 +230,13 @@ class ParsecSDKBridge: ParsecService
                     _ = self.frameSignal.wait(timeout: .distantFuture)
                     guard let view = self.metalView, let queue = self.metalQueue else { continue }
                     autoreleasepool {
-                        guard let layer = view.layer as? CAMetalLayer, let drawable = layer.nextDrawable() else { return }
-                        var cqOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(queue).toOpaque()
-                        var texOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(drawable.texture).toOpaque()
-                        _ = ParsecClientMetalRenderFrame(self._parsec, UInt8(DEFAULT_STREAM), &cqOpaque, &texOpaque, nil, nil, 16)
+                        DispatchQueue.main.sync {
+                            guard let layer = view.layer as? CAMetalLayer, let drawable = layer.nextDrawable() else { return }
+                            var cqOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(queue).toOpaque()
+                            var texOpaque: UnsafeMutableRawPointer? = Unmanaged.passUnretained(drawable.texture).toOpaque()
+                            _ = ParsecClientMetalRenderFrame(self._parsec, UInt8(DEFAULT_STREAM), &cqOpaque, &texOpaque, nil, nil, 16)
+                            layer.present(drawable)
+                        }
                     }
                 }
             }
