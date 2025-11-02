@@ -656,7 +656,11 @@ class ParsecSDKBridge: ParsecService
 		videoConfig.video[0].encoderFPS = DataManager.model.encoderFPS
 		videoConfig.video[0].output = DataManager.model.output
 		let encoder = JSONEncoder()
-		let data = try! encoder.encode(videoConfig)
-		CParsec.sendUserData(type: .setVideoConfig, message: data)
+		do {
+			let data = try encoder.encode(videoConfig)
+			CParsec.sendUserData(type: .setVideoConfig, message: data)
+		} catch {
+			print("Failed to encode video config: \(error)")
+		}
 	}
 }
