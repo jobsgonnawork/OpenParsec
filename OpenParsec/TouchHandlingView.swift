@@ -8,11 +8,31 @@ class TouchController
 	init(viewController: UIViewController) {
 		self.viewController = viewController
 	}
+
+	private func aspectFitContentRect(in bounds: CGRect, imageSize: CGSize) -> CGRect {
+		if imageSize.width <= 0 || imageSize.height <= 0 { return bounds }
+		let scale = min(bounds.width / imageSize.width, bounds.height / imageSize.height)
+		let w = imageSize.width * scale
+		let h = imageSize.height * scale
+		let x = bounds.midX - w / 2
+		let y = bounds.midY - h / 2
+		return CGRect(x: x, y: y, width: w, height: h)
+	}
+
+	private func mapPointToVideo(_ p: CGPoint) -> CGPoint {
+		let bounds = viewController.view.bounds
+		let imgSize = CGSize(width: CGFloat(CParsec.hostWidth), height: CGFloat(CParsec.hostHeight))
+		let rect = aspectFitContentRect(in: bounds, imageSize: imgSize)
+		let x = max(0, min(1, (p.x - rect.minX) / rect.width)) * imgSize.width
+		let y = max(0, min(1, (p.y - rect.minY) / rect.height)) * imgSize.height
+		return CGPoint(x: x, y: y)
+	}
 	
 	func onTouch(typeOfTap:Int, location:CGPoint, state:UIGestureRecognizer.State)
 	{
-		let x = Int32(location.x)
-		let y = Int32(location.y)
+		let mapped = mapPointToVideo(location)
+		let x = Int32(mapped.x)
+		let y = Int32(mapped.y)
 
 		// Send the mouse input to the host
 		let parsecTap = ParsecMouseButton(rawValue:UInt32(typeOfTap))
@@ -33,8 +53,9 @@ class TouchController
 	{
 		let parsecTap = ParsecMouseButton(rawValue:UInt32(typeOfTap))
 		if SettingsHandler.cursorMode == .direct {
-			let x = Int32(location.x)
-			let y = Int32(location.y)
+			let mapped = mapPointToVideo(location)
+			let x = Int32(mapped.x)
+			let y = Int32(mapped.y)
 
 			// Send the mouse input to the host
 			// add release delay in case some games ignore instant key release
