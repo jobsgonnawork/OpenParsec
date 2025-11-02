@@ -8,6 +8,7 @@
 import Foundation
 import UIKit
 import ParsecSDK
+import QuartzCore
 
 
 protocol ParsecPlayground {
@@ -25,6 +26,8 @@ class ParsecViewController :UIViewController {
 	var touchController: TouchController!
 	var u:UIImageView?
 	var lastImg: CGImage?
+	var hasHardwareMouse: Bool = false
+	var displayLink: CADisplayLink?
 	var hasHardwareMouse: Bool = false
 	
 	var lastLongPressPoint : CGPoint = CGPoint()
@@ -148,6 +151,10 @@ class ParsecViewController :UIViewController {
 			name: UIResponder.keyboardWillHideNotification,
 			object: nil
 		)
+
+		// Smooth local cursor updates independent of video frame rate
+		displayLink = CADisplayLink(target: self, selector: #selector(displayLinkTick))
+		displayLink?.add(to: .main, forMode: .common)
 		
 		NotificationCenter.default.addObserver(
 			self,
@@ -210,6 +217,8 @@ class ParsecViewController :UIViewController {
 		}
 		NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillShowNotification, object: nil)
 		NotificationCenter.default.removeObserver(self, name: UIResponder.keyboardWillHideNotification, object: nil)
+		displayLink?.invalidate()
+		displayLink = nil
 	}
 	
 	
@@ -238,6 +247,10 @@ class ParsecViewController :UIViewController {
 	
 	@objc func keyboardWillHide(_ notification: Notification) {
 		view.frame.origin.y = 0
+	}
+
+	@objc func displayLinkTick() {
+		updateImage()
 	}
 	
 }
