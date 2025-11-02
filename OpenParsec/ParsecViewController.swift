@@ -71,13 +71,12 @@ class ParsecViewController :UIViewController {
 	
 	override func viewDidLoad() {
 		if SettingsHandler.usePollFrameRenderer {
-				videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+			videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
 			videoView?.contentMode = .scaleAspectFit
-				videoView?.isUserInteractionEnabled = false
+			videoView?.isUserInteractionEnabled = true
 			if let v = videoView { view.addSubview(v) }
 			CParsec.enablePollFrameRendering { [weak self] cg in
 				self?.videoView?.image = UIImage(cgImage: cg)
-					self?.updateImage()
 			}
 		} else {
 			glkView.viewDidLoad()
@@ -99,7 +98,11 @@ class ParsecViewController :UIViewController {
 
 		let panGestureRecognizer = UIPanGestureRecognizer(target:self, action:#selector(self.handlePanGesture(_:)))
 		panGestureRecognizer.delegate = self
+		panGestureRecognizer.allowedTouchTypes = [0, 2]
 		view.addGestureRecognizer(panGestureRecognizer)
+
+		let hoverRecognizer = UIHoverGestureRecognizer(target: self, action: #selector(self.handleHover(_:)))
+		view.addGestureRecognizer(hoverRecognizer)
 
 		
 		
@@ -141,6 +144,13 @@ class ParsecViewController :UIViewController {
 			object: nil
 		)
 		
+	}
+
+	@objc func handleHover(_ recognizer: UIHoverGestureRecognizer) {
+		let location = recognizer.location(in: recognizer.view)
+		if SettingsHandler.cursorMode == .direct {
+			CParsec.sendMousePosition(Int32(location.x), Int32(location.y))
+		}
 	}
 	
 	override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {
