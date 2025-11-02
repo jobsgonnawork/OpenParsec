@@ -85,6 +85,7 @@ protocol ParsecService {
 	func sendWheelMsg(x: Int32, y: Int32)
 	func sendUserData(type: ParsecUserDataType, message: Data)
 	func updateHostVideoConfig()
+	func enablePollFrameRendering(_ consumer: @escaping (CGImage) -> Void)
 }
 
 class CParsec
@@ -149,6 +150,10 @@ class CParsec
 	static func renderGLFrame(timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
 	{
 		parsecImpl.renderGLFrame(timeout: timeout)
+	}
+
+	static func enablePollFrameRendering(_ consumer: @escaping (CGImage) -> Void) {
+		parsecImpl.enablePollFrameRendering(consumer)
 	}
 	
 	static func setMuted(_ muted:Bool)

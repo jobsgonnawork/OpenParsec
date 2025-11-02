@@ -20,6 +20,7 @@ protocol ParsecPlayground {
 
 class ParsecViewController :UIViewController {
 	var glkView: ParsecPlayground!
+	var videoView: UIImageView?
 	var gamePadController: GamepadController!
 	var touchController: TouchController!
 	var u:UIImageView?
@@ -69,7 +70,16 @@ class ParsecViewController :UIViewController {
 	}
 	
 	override func viewDidLoad() {
-		glkView.viewDidLoad()
+		if SettingsHandler.usePollFrameRenderer {
+			videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+			videoView?.contentMode = .scaleAspectFit
+			if let v = videoView { view.addSubview(v) }
+			CParsec.enablePollFrameRendering { [weak self] cg in
+				self?.videoView?.image = UIImage(cgImage: cg)
+			}
+		} else {
+			glkView.viewDidLoad()
+		}
 		touchController.viewDidLoad()
 		gamePadController.viewDidLoad()
 		
@@ -137,7 +147,11 @@ class ParsecViewController :UIViewController {
 		let h = size.height
 		let w = size.width
 		
-		self.glkView.updateSize(width: w, height: h)
+		if SettingsHandler.usePollFrameRenderer {
+			videoView?.frame.size = CGSize(width: w, height: h)
+		} else {
+			self.glkView.updateSize(width: w, height: h)
+		}
 		CParsec.setFrame(w, h, UIScreen.main.scale)
 	}
 	

@@ -11,6 +11,7 @@ struct SettingsHandler
 	public static var noOverlay:Bool = false
 	public static var hideStatusBar:Bool = true
 	public static var rightClickPosition:RightClickPosition = .firstFinger
+	public static var usePollFrameRenderer:Bool = true
 	
 	public static func load()
 	{

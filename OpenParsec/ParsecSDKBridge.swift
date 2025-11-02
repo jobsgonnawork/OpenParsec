@@ -2,6 +2,8 @@ import ParsecSDK
 import MetalKit
 import UIKit
 import QuartzCore
+import CoreImage
+import CoreVideo
 
 enum RendererType:Int
 {
@@ -59,7 +61,7 @@ class ParsecSDKBridge: ParsecService
 	
 	public var mouseInfo = MouseInfo()
 
-	// Video FPS tracking (count new frames via pre-render callback)
+	// Video FPS tracking (count new frames via pre-render callback or PollFrame)
 	private var videoFrameCount: Int = 0
 	private var lastVideoFPSTimestamp: CFTimeInterval = CACurrentMediaTime()
 
@@ -82,6 +84,81 @@ class ParsecSDKBridge: ParsecService
 		let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
 		instance.onPreRenderFrame()
 		return true
+	}
+
+	// PollFrame-based renderer support
+	private var pollFrameRenderingEnabled = false
+	private var onVideoFrameImage: ((CGImage) -> Void)?
+	private var ciContext = CIContext(options: nil)
+	private var pollFrameItem: DispatchWorkItem?
+
+	private static let framePollThunk: @convention(c) (UnsafePointer<ParsecFrame>?, UnsafeRawPointer?, UnsafeMutableRawPointer?) -> Void = { framePtr, imagePtr, opaque in
+		guard let opaque = opaque, let framePtr = framePtr, let imagePtr = imagePtr else { return }
+		let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
+		instance.handlePolledFrame(frame: framePtr.pointee, imagePtr: imagePtr)
+	}
+
+	private func handlePolledFrame(frame: ParsecFrame, imagePtr: UnsafeRawPointer) {
+		// Update FPS counter
+		onPreRenderFrame()
+		guard let consumer = onVideoFrameImage else { return }
+		guard let cg = convertFrameToCGImage(frame: frame, imagePtr: imagePtr) else { return }
+		DispatchQueue.main.async {
+			consumer(cg)
+		}
+	}
+
+	private func convertFrameToCGImage(frame: ParsecFrame, imagePtr: UnsafeRawPointer) -> CGImage? {
+		let width = Int(frame.width)
+		let height = Int(frame.height)
+		switch frame.format {
+		case FORMAT_BGRA:
+			let bytesPerRow = Int(frame.fullWidth) * 4
+			let colorSpace = CGColorSpaceCreateDeviceRGB()
+			let bitmapInfo = CGBitmapInfo.byteOrder32Little.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedFirst.rawValue))
+			guard let provider = CGDataProvider(dataInfo: nil, data: imagePtr, size: Int(frame.size), releaseData: {_,_,_ in }) else { return nil }
+			return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+		case FORMAT_RGBA:
+			let bytesPerRow = Int(frame.fullWidth) * 4
+			let colorSpace = CGColorSpaceCreateDeviceRGB()
+			let bitmapInfo = CGBitmapInfo.byteOrder32Big.union(CGBitmapInfo(rawValue: CGImageAlphaInfo.premultipliedLast.rawValue))
+			guard let provider = CGDataProvider(dataInfo: nil, data: imagePtr, size: Int(frame.size), releaseData: {_,_,_ in }) else { return nil }
+			return CGImage(width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: bytesPerRow, space: colorSpace, bitmapInfo: bitmapInfo, provider: provider, decode: nil, shouldInterpolate: true, intent: .defaultIntent)
+		case FORMAT_NV12:
+			let yStride = Int(frame.fullWidth)
+			let uvStride = Int(frame.fullWidth)
+			let ySize = yStride * Int(frame.fullHeight)
+			let uvSize = yStride * Int(frame.fullHeight) / 2
+			var pixelBuffer: CVPixelBuffer?
+			let planeBaseAddresses: [UnsafeMutablePointer<UInt8>?] = [UnsafeMutablePointer<UInt8>(mutating: imagePtr.assumingMemoryBound(to: UInt8.self)),
+				UnsafeMutablePointer<UInt8>(mutating: imagePtr.advanced(by: ySize).assumingMemoryBound(to: UInt8.self))]
+			let planeWidths = [Int(frame.fullWidth), Int(frame.fullWidth)]
+			let planeHeights = [Int(frame.fullHeight), Int(frame.fullHeight) / 2]
+			let planeBytesPerRow = [yStride, uvStride]
+			let status = CVPixelBufferCreateWithPlanarBytes(nil, Int(frame.fullWidth), Int(frame.fullHeight), kCVPixelFormatType_420YpCbCr8BiPlanarFullRange, nil, ySize + uvSize, 2, planeBaseAddresses, planeWidths, planeHeights, planeBytesPerRow, nil, nil, nil, &pixelBuffer)
+			if status != kCVReturnSuccess { return nil }
+			guard let pb = pixelBuffer else { return nil }
+			let ci = CIImage(cvPixelBuffer: pb)
+			return ciContext.createCGImage(ci, from: CGRect(x: 0, y: 0, width: width, height: height))
+		default:
+			return nil
+		}
+	}
+
+	func enablePollFrameRendering(_ consumer: @escaping (CGImage) -> Void) {
+		onVideoFrameImage = consumer
+		pollFrameRenderingEnabled = true
+		if pollFrameItem == nil {
+			let item = DispatchWorkItem { [weak self] in
+				guard let self = self else { return }
+				let opaque = Unmanaged.passUnretained(self).toOpaque()
+				while self.backgroundTaskRunning && self.pollFrameRenderingEnabled {
+					_ = ParsecClientPollFrame(self._parsec, UInt8(DEFAULT_STREAM), ParsecSDKBridge.framePollThunk, 16, opaque)
+				}
+			}
+			pollFrameItem = item
+			DispatchQueue.global().async(execute: item)
+		}
 	}
 	
 	init() {

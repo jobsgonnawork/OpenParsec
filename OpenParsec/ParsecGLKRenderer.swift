@@ -35,6 +35,9 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
 
 	func glkView(_ view:GLKView, drawIn rect:CGRect)
 	{
+		if SettingsHandler.usePollFrameRenderer {
+			return
+		}
 		let deltaWidth: CGFloat = view.frame.size.width - lastWidth
 		if deltaWidth > 0.1 || deltaWidth < -0.1
 		{
