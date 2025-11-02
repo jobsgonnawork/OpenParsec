@@ -58,24 +58,12 @@ class ParsecViewController :UIViewController {
 				u!.image = UIImage(cgImage: CParsec.mouseInfo.cursorImg!)
 				lastImg = CParsec.mouseInfo.cursorImg!
 			}
-			// Map host cursor coords into aspect-fit content rect
-			let bounds = view.bounds
-			let imgSize = CGSize(width: CGFloat(CParsec.hostWidth), height: CGFloat(CParsec.hostHeight))
-			let scale = min(bounds.width / imgSize.width, bounds.height / imgSize.height)
-			let contentW = imgSize.width * scale
-			let contentH = imgSize.height * scale
-			let originX = bounds.midX - contentW / 2
-			let originY = bounds.midY - contentH / 2
-			let mx = CGFloat(CParsec.mouseInfo.mouseX)
-			let my = CGFloat(CParsec.mouseInfo.mouseY)
-			let vx = originX + mx * scale
-			let vy = originY + my * scale
-			let w = CGFloat(CParsec.mouseInfo.cursorWidth) * CGFloat(SettingsHandler.cursorScale) * scale
-			let h = CGFloat(CParsec.mouseInfo.cursorHeight) * CGFloat(SettingsHandler.cursorScale) * scale
-			u?.frame = CGRect(x: Int(vx) - Int(CGFloat(CParsec.mouseInfo.cursorHotX) * CGFloat(SettingsHandler.cursorScale) * scale),
-						  y: Int(vy) - Int(CGFloat(CParsec.mouseInfo.cursorHotY) * CGFloat(SettingsHandler.cursorScale) * scale),
-						  width: Int(w),
-						  height: Int(h))
+
+			u?.frame = CGRect(x: Int(CParsec.mouseInfo.mouseX) - Int(Float(CParsec.mouseInfo.cursorHotX) * SettingsHandler.cursorScale),
+							  y: Int(CParsec.mouseInfo.mouseY) - Int(Float(CParsec.mouseInfo.cursorHotY) * SettingsHandler.cursorScale),
+							  width: Int(Float(CParsec.mouseInfo.cursorWidth) * SettingsHandler.cursorScale),
+							  height: Int(Float(CParsec.mouseInfo.cursorHeight) * SettingsHandler.cursorScale))
+			
 		} else {
 			u?.image = nil
 		}
@@ -83,27 +71,19 @@ class ParsecViewController :UIViewController {
 	
 	override func viewDidLoad() {
 		if SettingsHandler.usePollFrameRenderer {
-				videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
-				videoView?.contentMode = .scaleAspectFit
-				videoView?.isUserInteractionEnabled = false
+			videoView = UIImageView(frame: CGRect(x: 0, y: 0, width: UIScreen.main.bounds.width, height: UIScreen.main.bounds.height))
+			videoView?.contentMode = .scaleAspectFit
 			if let v = videoView { view.addSubview(v) }
 			CParsec.enablePollFrameRendering { [weak self] cg in
-				guard let self = self else { return }
-				self.videoView?.image = UIImage(cgImage: cg)
-				// Update remote cursor overlay each presented frame
-				self.updateImage()
-				if let u = self.u { self.view.bringSubviewToFront(u) }
+				self?.videoView?.image = UIImage(cgImage: cg)
 			}
 		} else {
 			glkView.viewDidLoad()
 		}
-		// Ensure Parsec mouse coordinate mapping is correct on startup
-		CParsec.setFrame(view.bounds.size.width, view.bounds.size.height, UIScreen.main.scale)
 		touchController.viewDidLoad()
 		gamePadController.viewDidLoad()
 		
 		u = UIImageView(frame: CGRect(x: 0,y: 0,width: 100, height: 100))
-		u?.isUserInteractionEnabled = false
 		view.addSubview(u!)
 		
 		becomeFirstResponder()
