@@ -75,7 +75,11 @@ class ParsecViewController :UIViewController {
 			videoView?.contentMode = .scaleAspectFit
 			if let v = videoView { view.addSubview(v) }
 			CParsec.enablePollFrameRendering { [weak self] cg in
-				self?.videoView?.image = UIImage(cgImage: cg)
+				guard let self = self else { return }
+				self.videoView?.image = UIImage(cgImage: cg)
+				// Update remote cursor overlay each presented frame
+				self.updateImage()
+				if let u = self.u { self.view.bringSubviewToFront(u) }
 			}
 		} else {
 			glkView.viewDidLoad()
