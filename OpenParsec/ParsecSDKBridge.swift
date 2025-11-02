@@ -103,7 +103,9 @@ class ParsecSDKBridge: ParsecService
 		onPreRenderFrame()
 		guard let consumer = onVideoFrameImage else { return }
 		guard let cg = convertFrameToCGImage(frame: frame, imagePtr: imagePtr) else { return }
-		DispatchQueue.main.async { consumer(cg) }
+		DispatchQueue.main.async {
+			consumer(cg)
+		}
 	}
 
 	private func convertFrameToCGImage(frame: ParsecFrame, imagePtr: UnsafeRawPointer) -> CGImage? {
@@ -653,14 +655,9 @@ class ParsecSDKBridge: ParsecService
 		videoConfig.video[0].resolutionY = DataManager.model.resolutionY
 		videoConfig.video[0].encoderMaxBitrate = DataManager.model.bitrate
 		videoConfig.video[0].fullFPS = DataManager.model.constantFps
-		videoConfig.video[0].encoderFPS = DataManager.model.encoderFPS
 		videoConfig.video[0].output = DataManager.model.output
 		let encoder = JSONEncoder()
-		do {
-			let data = try encoder.encode(videoConfig)
-			CParsec.sendUserData(type: .setVideoConfig, message: data)
-		} catch {
-			print("Failed to encode video config: \(error)")
-		}
+		let data = try! encoder.encode(videoConfig)
+		CParsec.sendUserData(type: .setVideoConfig, message: data)
 	}
 }

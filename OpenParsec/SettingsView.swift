@@ -13,7 +13,6 @@ struct SettingsView:View
 	@State var mouseSensitivity:Float = SettingsHandler.mouseSensitivity
 	@State var noOverlay:Bool = SettingsHandler.noOverlay
 	@State var hideStatusBar:Bool = SettingsHandler.hideStatusBar
-	@State var hostFPS:Int = DataManager.model.encoderFPS
 	
 	let resolutionChoices : [Choice<ParsecResolution>]
 
@@ -131,14 +130,6 @@ struct SettingsView:View
 									Choice("Prefer H.265", DecoderPref.h265)
 								])
                             }
-                            CatItem("Host FPS")
-                            {
-                                let maxHz = UIScreen.main.maximumFramesPerSecond
-                                let options: [Choice<Int>] = (
-                                    maxHz >= 120 ? [Choice("30", 30), Choice("60", 60), Choice("120", 120)] : [Choice("30", 30), Choice("60", 60)]
-                                )
-                                MultiPicker(selection:$hostFPS, options: options)
-                            }
                         }
                         CatTitle("Misc")
                         CatList()
@@ -183,8 +174,6 @@ struct SettingsView:View
 		SettingsHandler.noOverlay = noOverlay
 		SettingsHandler.hideStatusBar = hideStatusBar
 		SettingsHandler.mouseSensitivity = mouseSensitivity
-		DataManager.model.encoderFPS = hostFPS
-		CParsec.updateHostVideoConfig()
 		SettingsHandler.save()
 		
 		visible = false
