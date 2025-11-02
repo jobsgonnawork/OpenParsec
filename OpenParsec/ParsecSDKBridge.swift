@@ -63,7 +63,13 @@ class ParsecSDKBridge: ParsecService
 	private var videoFrameCount: Int = 0
 	private var lastVideoFPSTimestamp: CFTimeInterval = CACurrentMediaTime()
 
-	private func onPreRenderFrame() {
+	private static let framePollThunk: @convention(c) (UnsafePointer<ParsecFrame>?, UnsafeRawPointer?, UnsafeMutableRawPointer?) -> Void = { _, _, opaque in
+		guard let opaque = opaque else { return }
+		let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
+		instance.onVideoFrameArrived()
+	}
+
+	private func onVideoFrameArrived() {
 		videoFrameCount += 1
 		let now = CACurrentMediaTime()
 		let elapsed = now - lastVideoFPSTimestamp
@@ -75,13 +81,6 @@ class ParsecSDKBridge: ParsecService
 			videoFrameCount = 0
 			lastVideoFPSTimestamp = now
 		}
-	}
-
-	private static let preRenderThunk: @convention(c) (UnsafeMutableRawPointer?) -> Bool = { opaque in
-		guard let opaque = opaque else { return true }
-		let instance = Unmanaged<ParsecSDKBridge>.fromOpaque(opaque).takeUnretainedValue()
-		instance.onPreRenderFrame()
-		return true
 	}
 	
 	init() {
@@ -176,8 +175,7 @@ class ParsecSDKBridge: ParsecService
 	
 	func renderGLFrame(timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
 	{
-		let opaque = Unmanaged.passUnretained(self).toOpaque()
-		ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), ParsecSDKBridge.preRenderThunk, opaque, timeout)
+		ParsecClientGLRenderFrame(_parsec, UInt8(DEFAULT_STREAM), nil, nil, timeout)
 	}
 	
 	/*static func renderMetalFrame(_ queue:inout MTLCommandQueue, _ texturePtr:UnsafeMutablePointer<UnsafeMutableRawPointer?>, timeout:UInt32 = 16) // timeout in ms, 16 == 60 FPS, 8 == 120 FPS, etc.
@@ -529,6 +527,14 @@ class ParsecSDKBridge: ParsecService
 		let mainQueue = DispatchQueue.global()
 		mainQueue.async(execute: item1)
 		mainQueue.async(execute: item2)
+		
+		let item3 = DispatchWorkItem {
+			let opaque = Unmanaged.passUnretained(self).toOpaque()
+			while self.backgroundTaskRunning {
+				_ = ParsecClientPollFrame(self._parsec, UInt8(DEFAULT_STREAM), ParsecSDKBridge.framePollThunk, 100, opaque)
+			}
+		}
+		mainQueue.async(execute: item3)
 	}
 	
 	func sendUserData(type: ParsecUserDataType, message: Data) {
