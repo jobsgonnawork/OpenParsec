@@ -12,6 +12,7 @@ struct SettingsHandler
 	public static var hideStatusBar:Bool = true
 	public static var rightClickPosition:RightClickPosition = .firstFinger
 	public static var usePollFrameRenderer:Bool = true
+	public static var encoderFPS:Int = 60
 	
 	public static func load()
 	{
@@ -31,6 +32,8 @@ struct SettingsHandler
 			{ noOverlay = UserDefaults.standard.bool(forKey:"noOverlay") }
 		if UserDefaults.standard.exists(forKey:"hideStatusBar")
 		{ hideStatusBar = UserDefaults.standard.bool(forKey:"hideStatusBar") }
+		if UserDefaults.standard.exists(forKey:"encoderFPS")
+		{ encoderFPS = Int(UserDefaults.standard.integer(forKey: "encoderFPS")) }
 		
 		if UserDefaults.standard.exists(forKey:"resolution") {
 			for res in ParsecResolution.resolutions {
@@ -53,6 +56,7 @@ struct SettingsHandler
 		UserDefaults.standard.set(noOverlay, forKey:"noOverlay")
 		UserDefaults.standard.set(resolution.desc, forKey:"resolution")
 		UserDefaults.standard.set(hideStatusBar, forKey: "hideStatusBar")
+		UserDefaults.standard.set(encoderFPS, forKey: "encoderFPS")
 	}
 }
 

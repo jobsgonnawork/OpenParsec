@@ -13,6 +13,7 @@ struct SettingsView:View
 	@State var mouseSensitivity:Float = SettingsHandler.mouseSensitivity
 	@State var noOverlay:Bool = SettingsHandler.noOverlay
 	@State var hideStatusBar:Bool = SettingsHandler.hideStatusBar
+	@State var encoderFPS:Int = SettingsHandler.encoderFPS
 	
 	let resolutionChoices : [Choice<ParsecResolution>]
 
@@ -122,6 +123,20 @@ struct SettingsView:View
 							{
 								MultiPicker(selection:$resolution, options:resolutionChoices)
 							}
+					CatItem("Host FPS")
+					{
+						let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
+						Picker("", selection: $encoderFPS) {
+							Text("30").tag(30)
+							Text("60").tag(60)
+							Text("120").tag(120).foregroundColor(supports120 ? Color("Foreground") : Color.gray).disabled(!supports120)
+						}
+						.pickerStyle(.menu)
+						.onChange(of: encoderFPS) { newValue in
+							let supports120 = UIScreen.main.maximumFramesPerSecond >= 120
+							if newValue == 120 && !supports120 { encoderFPS = 60 }
+						}
+					}
                             CatItem("Decoder")
                             {
 								MultiPicker(selection:$decoder, options:
@@ -174,7 +189,10 @@ struct SettingsView:View
 		SettingsHandler.noOverlay = noOverlay
 		SettingsHandler.hideStatusBar = hideStatusBar
 		SettingsHandler.mouseSensitivity = mouseSensitivity
+		SettingsHandler.encoderFPS = encoderFPS
 		SettingsHandler.save()
+		DataManager.model.encoderFPS = encoderFPS
+		CParsec.updateHostVideoConfig()
 		
 		visible = false
 	}

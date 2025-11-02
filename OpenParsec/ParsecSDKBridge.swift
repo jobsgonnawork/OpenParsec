@@ -326,7 +326,7 @@ class ParsecSDKBridge: ParsecService
 		let pointer = ParsecGetBuffer(_parsec, event.key)
 		switch event.id {
 		case 11:
-			do {
+				do {
 				let decoder = JSONDecoder()
 				let config = try decoder.decode(ParsecUserDataVideoConfig.self, from: Data(bytesNoCopy: pointer!, count: strlen(pointer!), deallocator: .none))
 				let videoConfig = config.video[0]
@@ -334,6 +334,7 @@ class ParsecSDKBridge: ParsecService
 				DataManager.model.resolutionY = videoConfig.resolutionY
 				DataManager.model.bitrate = videoConfig.encoderMaxBitrate
 				DataManager.model.constantFps = videoConfig.fullFPS
+					DataManager.model.encoderFPS = videoConfig.encoderFPS
 				if !didSetResolution {
 					didSetResolution = true
 					DispatchQueue.main.async {
@@ -656,6 +657,7 @@ class ParsecSDKBridge: ParsecService
 		videoConfig.video[0].encoderMaxBitrate = DataManager.model.bitrate
 		videoConfig.video[0].fullFPS = DataManager.model.constantFps
 		videoConfig.video[0].output = DataManager.model.output
+		videoConfig.video[0].encoderFPS = DataManager.model.encoderFPS
 		let encoder = JSONEncoder()
 		let data = try! encoder.encode(videoConfig)
 		CParsec.sendUserData(type: .setVideoConfig, message: data)
