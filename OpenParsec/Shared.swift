@@ -76,6 +76,7 @@ class SharedModel: ObservableObject {
 	@Published var constantFps = false
 	@Published var output = "none"
 	@Published var displayConfigs : [ParsecDisplayConfig] = []
+	@Published var fps : Double = 0
 	
 }
 

@@ -8,6 +8,9 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
 	
 	var lastWidth:CGFloat = 1.0
 
+	private var frameCount:Int = 0
+	private var lastFPSTimestamp:CFTimeInterval = CACurrentMediaTime()
+
 	var lastImg: CGImage?
 	let updateImage: () -> Void
 	
@@ -39,6 +42,19 @@ class ParsecGLKRenderer:NSObject, GLKViewDelegate, GLKViewControllerDelegate
 	        lastWidth = view.frame.size.width
 		}
 		CParsec.renderGLFrame(timeout:16)
+		
+		// FPS calculation based on actual draw callbacks
+		frameCount += 1
+		let now = CACurrentMediaTime()
+		let elapsed = now - lastFPSTimestamp
+		if elapsed >= 1.0 {
+			let fps = Double(frameCount) / elapsed
+			DispatchQueue.main.async {
+				DataManager.model.fps = fps
+			}
+			frameCount = 0
+			lastFPSTimestamp = now
+		}
 		
 		updateImage()
 		
