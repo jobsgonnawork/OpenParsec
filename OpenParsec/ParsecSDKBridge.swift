@@ -644,13 +644,20 @@ class ParsecSDKBridge: ParsecService
 	}
 	
 	func sendUserData(type: ParsecUserDataType, message: Data) {
-		message.withUnsafeBytes { ptr in
-			let ptr2 = ptr.baseAddress?.assumingMemoryBound(to: CChar.self)
-			ParsecClientSendUserData(_parsec, type.rawValue, ptr2)
+		guard let str = String(data: message, encoding: .utf8) else {
+			print("error: failed to encode user data as UTF-8 string")
+			return
+		}
+		str.withCString { cstr in
+			ParsecClientSendUserData(_parsec, type.rawValue, cstr)
 		}
 	}
 	
 	func updateHostVideoConfig() {
+		// Only attempt to send when connected
+		var pcs = ParsecClientStatus()
+		let st = ParsecClientGetStatus(_parsec, &pcs)
+		if st != PARSEC_OK { return }
 		var videoConfig = ParsecUserDataVideoConfig()
 		videoConfig.video[0].resolutionX = DataManager.model.resolutionX
 		videoConfig.video[0].resolutionY = DataManager.model.resolutionY
@@ -658,8 +665,12 @@ class ParsecSDKBridge: ParsecService
 		videoConfig.video[0].fullFPS = DataManager.model.constantFps
 		videoConfig.video[0].output = DataManager.model.output
 		videoConfig.video[0].encoderFPS = DataManager.model.encoderFPS
-		let encoder = JSONEncoder()
-		let data = try! encoder.encode(videoConfig)
-		CParsec.sendUserData(type: .setVideoConfig, message: data)
+		do {
+			let encoder = JSONEncoder()
+			let data = try encoder.encode(videoConfig)
+			CParsec.sendUserData(type: .setVideoConfig, message: data)
+		} catch {
+			print("error: failed to encode video config: \(error)")
+		}
 	}
 }
