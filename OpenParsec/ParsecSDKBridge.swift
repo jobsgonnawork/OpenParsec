@@ -231,10 +231,16 @@ class ParsecSDKBridge: ParsecService
                     guard let view = self.metalView, let queue = self.metalQueue else { continue }
                     autoreleasepool {
                         DispatchQueue.main.sync {
-                            guard let layer = view.layer as? CAMetalLayer, let drawable = layer.nextDrawable() else { return }
+                            print("[Metal] Getting drawable...")
+                            guard let layer = view.layer as? CAMetalLayer, let drawable = layer.nextDrawable() else {
+                                print("[Metal] Failed to get drawable")
+                                return
+                            }
+                            print("[Metal] Got drawable, calling ParsecMetalRenderWrapper...")
                             let status = ParsecMetalRenderWrapper(self._parsec, UInt8(DEFAULT_STREAM), queue, drawable.texture, nil, nil, 16)
-                            _ = status
+                            print("[Metal] Render status: \(status.rawValue)")
                             drawable.present()
+                            print("[Metal] Presented")
                         }
                     }
                 }
