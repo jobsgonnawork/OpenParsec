@@ -1,6 +1,8 @@
 import ParsecSDK
 import MetalKit
 import UIKit
+import AVFoundation
+import Network
 
 enum RendererType: Int
 {
@@ -32,6 +34,361 @@ struct KeyBoardKeyEvent {
 	var isPressBegin: Bool
 }
 
+private extension Data {
+	mutating func appendUInt16LE(_ value: UInt16) {
+		var le = value.littleEndian
+		append(UnsafeBufferPointer(start: &le, count: 1))
+	}
+
+	mutating func appendUInt32LE(_ value: UInt32) {
+		var le = value.littleEndian
+		append(UnsafeBufferPointer(start: &le, count: 1))
+	}
+
+	mutating func appendUInt64LE(_ value: UInt64) {
+		var le = value.littleEndian
+		append(UnsafeBufferPointer(start: &le, count: 1))
+	}
+
+	mutating func appendInt16LE(_ value: Int16) {
+		var le = value.littleEndian
+		append(UnsafeBufferPointer(start: &le, count: 1))
+	}
+}
+
+final class SidecarUDPSender {
+	private let queue = DispatchQueue(label: "openparsec.sidecar.udp")
+	private var connection: NWConnection?
+	private var currentHost: String = ""
+	private var currentPort: Int = 0
+	private var enabled: Bool = false
+	private var token: String = ""
+	private(set) var sentPackets: UInt64 = 0
+	private(set) var sendErrors: UInt64 = 0
+
+	func updateConfig(enabled: Bool, host: String, port: Int, token: String) {
+		queue.async {
+			self.enabled = enabled
+			self.token = token
+			if self.currentHost != host || self.currentPort != port {
+				self.connection?.cancel()
+				self.connection = nil
+				self.currentHost = host
+				self.currentPort = port
+			}
+		}
+	}
+
+	func reset() {
+		queue.async {
+			self.connection?.cancel()
+			self.connection = nil
+		}
+	}
+
+	func sendPcm16Mono(samples: [Int16], sampleRate: UInt32, sequence: UInt32, timestampNs: UInt64) {
+		queue.async {
+			guard self.enabled else {
+				return
+			}
+			guard !self.currentHost.isEmpty, !self.token.isEmpty, self.currentPort > 0, self.currentPort <= 65535 else {
+				return
+			}
+			guard !samples.isEmpty else {
+				return
+			}
+			self.ensureConnection()
+			guard let connection = self.connection else {
+				self.sendErrors += 1
+				return
+			}
+
+			var payload = Data(capacity: samples.count * MemoryLayout<Int16>.size)
+			for sample in samples {
+				payload.appendInt16LE(sample)
+			}
+
+			let tokenData = self.token.data(using: .utf8) ?? Data()
+			var packet = Data(capacity: 32 + tokenData.count + payload.count)
+			packet.append(contentsOf: [0x4f, 0x50, 0x4d, 0x31]) // OPM1
+			packet.append(1) // version
+			packet.append(0) // flags
+			packet.appendUInt32LE(sequence)
+			packet.appendUInt64LE(timestampNs)
+			packet.appendUInt32LE(sampleRate)
+			packet.append(1) // channels (mono)
+			packet.append(0) // reserved
+			packet.appendUInt16LE(UInt16(min(samples.count, Int(UInt16.max))))
+			packet.appendUInt16LE(UInt16(min(tokenData.count, Int(UInt16.max))))
+			packet.appendUInt32LE(UInt32(min(payload.count, Int(UInt32.max))))
+			packet.append(tokenData)
+			packet.append(payload)
+
+			connection.send(content: packet, completion: .contentProcessed { error in
+				if error == nil {
+					self.sentPackets += 1
+				} else {
+					self.sendErrors += 1
+				}
+			})
+		}
+	}
+
+	private func ensureConnection() {
+		guard connection == nil else {
+			return
+		}
+		guard let port = NWEndpoint.Port(rawValue: UInt16(currentPort)) else {
+			return
+		}
+		let params = NWParameters.udp
+		let newConnection = NWConnection(host: NWEndpoint.Host(currentHost), port: port, using: params)
+		newConnection.stateUpdateHandler = { _ in }
+		newConnection.start(queue: queue)
+		connection = newConnection
+	}
+}
+
+final class MicrophoneManager {
+	private let supportEvaluator: () -> Bool
+	private let session = AVAudioSession.sharedInstance()
+	private let queue = DispatchQueue(label: "openparsec.microphone.queue")
+	private var engine: AVAudioEngine?
+	private var frameHandler: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?
+	private var observersRegistered = false
+	private var observerTokens: [NSObjectProtocol] = []
+	private var shouldResumeAfterInterruption = false
+	private(set) var totalFramesCaptured: UInt64 = 0
+	private(set) var lastError: String?
+	private(set) var isEnabled: Bool = false
+	private(set) var isMuted: Bool = true
+
+	init(supportEvaluator: @escaping () -> Bool = { false }, frameHandler: ((AVAudioPCMBuffer, AVAudioTime) -> Void)? = nil) {
+		self.supportEvaluator = supportEvaluator
+		self.frameHandler = frameHandler
+	}
+
+	deinit {
+		for token in observerTokens {
+			NotificationCenter.default.removeObserver(token)
+		}
+		observerTokens.removeAll()
+	}
+
+	var isSupported: Bool {
+		supportEvaluator()
+	}
+
+	func setMuted(_ muted: Bool) {
+		isMuted = muted
+	}
+
+	func setFrameHandler(_ handler: ((AVAudioPCMBuffer, AVAudioTime) -> Void)?) {
+		queue.async {
+			self.frameHandler = handler
+		}
+	}
+
+	func setEnabled(_ enabled: Bool, completion: ((Bool) -> Void)? = nil) {
+		guard supportEvaluator() else {
+			isEnabled = false
+			lastError = "sidecar_unconfigured"
+			completion?(false)
+			return
+		}
+
+		requestPermissionIfNeeded { [weak self] granted in
+			guard let self = self else {
+				completion?(false)
+				return
+			}
+
+			if !enabled {
+				self.queue.async {
+					self.stopCapture()
+					self.isEnabled = false
+					self.isMuted = true
+					self.restorePlaybackSession()
+					DispatchQueue.main.async {
+						completion?(true)
+					}
+				}
+				return
+			}
+
+			guard granted else {
+				self.queue.async {
+					self.isEnabled = false
+					self.isMuted = true
+					self.lastError = "permission_denied"
+					DispatchQueue.main.async {
+						completion?(false)
+					}
+				}
+				return
+			}
+
+			self.queue.async {
+				let ok = self.startCapture()
+				self.isEnabled = ok
+				if !ok {
+					self.isMuted = true
+				}
+				DispatchQueue.main.async {
+					completion?(ok)
+				}
+			}
+		}
+	}
+
+	private func requestPermissionIfNeeded(completion: @escaping (Bool) -> Void) {
+		switch AVAudioSession.sharedInstance().recordPermission {
+		case .granted:
+			completion(true)
+		case .denied:
+			completion(false)
+		case .undetermined:
+			AVAudioSession.sharedInstance().requestRecordPermission { granted in
+				DispatchQueue.main.async {
+					completion(granted)
+				}
+			}
+		@unknown default:
+			completion(false)
+		}
+	}
+
+	private func startCapture() -> Bool {
+		registerObserversIfNeeded()
+		do {
+			try session.setCategory(.playAndRecord, mode: .voiceChat, options: [.allowBluetooth, .defaultToSpeaker])
+			try session.setPreferredSampleRate(48_000)
+			try session.setPreferredIOBufferDuration(0.02)
+			try session.setActive(true)
+		} catch {
+			lastError = "audio_session_config_failed: \(error.localizedDescription)"
+			return false
+		}
+
+		let audioEngine = AVAudioEngine()
+		let input = audioEngine.inputNode
+		let format = input.inputFormat(forBus: 0)
+		input.removeTap(onBus: 0)
+		input.installTap(onBus: 0, bufferSize: 960, format: format) { [weak self] buffer, when in
+			guard let self = self else {
+				return
+			}
+			self.queue.async {
+				guard self.isEnabled else {
+					return
+				}
+				self.totalFramesCaptured += UInt64(buffer.frameLength)
+				if self.isMuted {
+					return
+				}
+				self.frameHandler?(buffer, when)
+			}
+		}
+
+		audioEngine.prepare()
+		do {
+			try audioEngine.start()
+			engine = audioEngine
+			lastError = nil
+			return true
+		} catch {
+			input.removeTap(onBus: 0)
+			engine = nil
+			lastError = "capture_start_failed: \(error.localizedDescription)"
+			return false
+		}
+	}
+
+	private func stopCapture() {
+		engine?.inputNode.removeTap(onBus: 0)
+		engine?.stop()
+		engine = nil
+	}
+
+	private func restorePlaybackSession() {
+		do {
+			try session.setCategory(.playback, mode: .default)
+			try session.setActive(true)
+		} catch {
+			lastError = "restore_playback_failed: \(error.localizedDescription)"
+		}
+	}
+
+	private func registerObserversIfNeeded() {
+		guard !observersRegistered else {
+			return
+		}
+		observersRegistered = true
+		let interruptionToken = NotificationCenter.default.addObserver(
+			forName: AVAudioSession.interruptionNotification,
+			object: nil,
+			queue: nil
+		) { [weak self] note in
+			self?.handleInterruption(note)
+		}
+		let routeToken = NotificationCenter.default.addObserver(
+			forName: AVAudioSession.routeChangeNotification,
+			object: nil,
+			queue: nil
+		) { [weak self] note in
+			self?.handleRouteChange(note)
+		}
+		observerTokens.append(interruptionToken)
+		observerTokens.append(routeToken)
+	}
+
+	private func handleInterruption(_ notification: Notification) {
+		guard
+			let userInfo = notification.userInfo,
+			let rawType = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+			let type = AVAudioSession.InterruptionType(rawValue: rawType)
+		else {
+			return
+		}
+
+		queue.async {
+			switch type {
+			case .began:
+				self.shouldResumeAfterInterruption = self.isEnabled
+				self.stopCapture()
+			case .ended:
+				guard self.shouldResumeAfterInterruption else {
+					return
+				}
+				self.shouldResumeAfterInterruption = false
+				_ = self.startCapture()
+			@unknown default:
+				break
+			}
+		}
+	}
+
+	private func handleRouteChange(_ notification: Notification) {
+		guard
+			let userInfo = notification.userInfo,
+			let rawReason = userInfo[AVAudioSessionRouteChangeReasonKey] as? UInt,
+			let reason = AVAudioSession.RouteChangeReason(rawValue: rawReason)
+		else {
+			return
+		}
+
+		if reason == .newDeviceAvailable || reason == .oldDeviceUnavailable || reason == .routeConfigurationChange {
+			queue.async {
+				guard self.isEnabled else {
+					return
+				}
+				self.stopCapture()
+				_ = self.startCapture()
+			}
+		}
+	}
+}
+
 class ParsecSDKBridge: ParsecService
 {
 	var hostWidth: Float = 1920
@@ -44,6 +401,14 @@ class ParsecSDKBridge: ParsecService
 	private var _parsec: OpaquePointer!
 	private var _audio: OpaquePointer!
 	private let _audioPtr: UnsafeRawPointer
+	private let _sidecarSender = SidecarUDPSender()
+	private var _micPcmFrameCount: UInt64 = 0
+	private var _micPacketSequence: UInt32 = 0
+	private lazy var _microphone = MicrophoneManager(supportEvaluator: { [weak self] in
+		self?.isSidecarConfigured() ?? false
+	}) { [weak self] buffer, _ in
+		self?.handleMicrophonePcm(buffer: buffer)
+	}
 	
 	private var isVirtualShiftOn = false
 	
@@ -83,6 +448,7 @@ class ParsecSDKBridge: ParsecService
 		} catch {
 			print("error: \(error)")
 		}
+		applySidecarConfig()
 
 	}
 	
@@ -124,7 +490,11 @@ class ParsecSDKBridge: ParsecService
 	}
 	
 	func disconnect() {
-		
+		DispatchQueue.global(qos: .utility).async {
+			self._microphone.setMuted(true)
+			self._microphone.setEnabled(false)
+			self._sidecarSender.reset()
+		}
 		audio_clear(&_audio)
 		ParsecClientDisconnect(_parsec)
 		backgroundTaskRunning = false
@@ -278,6 +648,162 @@ class ParsecSDKBridge: ParsecService
 	
 	func setMuted(_ muted: Bool) {
 		audio_mute(muted, _audioPtr)
+	}
+
+	func setMicrophoneEnabled(_ enabled: Bool) {
+		applySidecarConfig()
+		_microphone.setEnabled(enabled) { granted in
+			if enabled && !granted {
+				print("microphone unavailable: sidecar config incomplete or permission denied")
+			}
+			self.updateHostVideoConfig()
+		}
+	}
+
+	func setMicrophoneMuted(_ muted: Bool) {
+		_microphone.setMuted(muted)
+	}
+
+	func isMicrophoneEnabled() -> Bool {
+		_microphone.isEnabled
+	}
+
+	func isMicrophoneMuted() -> Bool {
+		_microphone.isMuted
+	}
+
+	func isMicrophoneSupported() -> Bool {
+		isSidecarConfigured()
+	}
+
+	private func handleMicrophonePcm(buffer: AVAudioPCMBuffer) {
+		_micPcmFrameCount += UInt64(buffer.frameLength)
+		guard let samples = monoPcm16(from: buffer) else {
+			return
+		}
+		_micPacketSequence &+= 1
+		let timestampNs = DispatchTime.now().uptimeNanoseconds
+		_sidecarSender.sendPcm16Mono(
+			samples: samples,
+			sampleRate: UInt32(max(1, Int(buffer.format.sampleRate))),
+			sequence: _micPacketSequence,
+			timestampNs: timestampNs
+		)
+	}
+
+	private func applySidecarConfig() {
+		let host = SettingsHandler.sidecarMicHost.trimmingCharacters(in: .whitespacesAndNewlines)
+		let token = SettingsHandler.sidecarMicToken.trimmingCharacters(in: .whitespacesAndNewlines)
+		_sidecarSender.updateConfig(
+			enabled: SettingsHandler.sidecarMicEnabled,
+			host: host,
+			port: SettingsHandler.sidecarMicPort,
+			token: token
+		)
+	}
+
+	private func isSidecarConfigured() -> Bool {
+		let host = SettingsHandler.sidecarMicHost.trimmingCharacters(in: .whitespacesAndNewlines)
+		let token = SettingsHandler.sidecarMicToken.trimmingCharacters(in: .whitespacesAndNewlines)
+		let validPort = SettingsHandler.sidecarMicPort > 0 && SettingsHandler.sidecarMicPort <= 65535
+		return SettingsHandler.sidecarMicEnabled && !host.isEmpty && !token.isEmpty && validPort
+	}
+
+	private func monoPcm16(from buffer: AVAudioPCMBuffer) -> [Int16]? {
+		let frames = Int(buffer.frameLength)
+		if frames <= 0 {
+			return nil
+		}
+
+		let gain = effectiveMicGain()
+
+		let channels = max(Int(buffer.format.channelCount), 1)
+		var output = [Int16](repeating: 0, count: frames)
+
+		if let int16Channels = buffer.int16ChannelData {
+			if buffer.format.isInterleaved {
+				let base = int16Channels[0]
+				for i in 0..<frames {
+					let idx = i * channels
+					if channels == 1 {
+						output[i] = applyGainAndClamp(sample: base[idx], gain: gain)
+					} else {
+						let sum = Int(base[idx]) + Int(base[idx + 1])
+						output[i] = applyGainAndClamp(sample: Int16(sum / 2), gain: gain)
+					}
+				}
+			} else {
+				let left = int16Channels[0]
+				if channels == 1 {
+					for i in 0..<frames {
+						output[i] = applyGainAndClamp(sample: left[i], gain: gain)
+					}
+				} else {
+					let right = int16Channels[1]
+					for i in 0..<frames {
+						let sum = Int(left[i]) + Int(right[i])
+						output[i] = applyGainAndClamp(sample: Int16(sum / 2), gain: gain)
+					}
+				}
+			}
+			return output
+		}
+
+		if let floatChannels = buffer.floatChannelData {
+			if buffer.format.isInterleaved {
+				let base = floatChannels[0]
+				for i in 0..<frames {
+					let idx = i * channels
+					let sample: Float
+					if channels == 1 {
+						sample = base[idx]
+					} else {
+						sample = (base[idx] + base[idx + 1]) * 0.5
+					}
+					let clamped = max(-1.0, min(1.0, sample * gain))
+					output[i] = Int16(clamped * Float(Int16.max))
+				}
+			} else {
+				let left = floatChannels[0]
+				if channels == 1 {
+					for i in 0..<frames {
+						let clamped = max(-1.0, min(1.0, left[i] * gain))
+						output[i] = Int16(clamped * Float(Int16.max))
+					}
+				} else {
+					let right = floatChannels[1]
+					for i in 0..<frames {
+						let sample = (left[i] + right[i]) * 0.5
+						let clamped = max(-1.0, min(1.0, sample * gain))
+						output[i] = Int16(clamped * Float(Int16.max))
+					}
+				}
+			}
+			return output
+		}
+
+		return nil
+	}
+
+	private func applyGainAndClamp(sample: Int16, gain: Float) -> Int16 {
+		let scaled = Float(sample) * gain
+		let clamped = max(Float(Int16.min), min(Float(Int16.max), scaled))
+		return Int16(clamped)
+	}
+
+	private func effectiveMicGain() -> Float {
+		let session = AVAudioSession.sharedInstance()
+		let portType = session.currentRoute.inputs.first?.portType
+		let baseGain: Double
+		switch portType {
+		case .some(.builtInMic):
+			baseGain = SettingsHandler.sidecarMicGainBuiltIn
+		case .some(.bluetoothA2DP), .some(.bluetoothHFP), .some(.bluetoothLE), .some(.headsetMic), .some(.usbAudio), .some(.lineIn):
+			baseGain = SettingsHandler.sidecarMicGainExternal
+		default:
+			baseGain = SettingsHandler.sidecarMicGain
+		}
+		return max(1.0, min(Float(baseGain), 8.0))
 	}
 	
 	func applyConfig() {
@@ -525,6 +1051,7 @@ class ParsecSDKBridge: ParsecService
 	
 	func updateHostVideoConfig() {
 		var videoConfig = ParsecUserDataVideoConfig()
+		videoConfig.virtualMicrophone = isMicrophoneEnabled() ? 1 : 0
 		videoConfig.video[0].resolutionX = DataManager.model.resolutionX
 		videoConfig.video[0].resolutionY = DataManager.model.resolutionY
 		videoConfig.video[0].encoderMaxBitrate = DataManager.model.bitrate

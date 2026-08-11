@@ -115,6 +115,8 @@ struct ParsecView: View
 	@State var zoomEnabled: Bool = false
 
 	@State var muted: Bool = false
+	@State var micEnabled: Bool = false
+	@State var micMuted: Bool = true
 	@State var preferH265: Bool = true
 	@State var constantFps = false
 	
@@ -142,6 +144,8 @@ struct ParsecView: View
 
 		let save = SettingsHandler.saveSessionSettings
 		_muted = State(initialValue: save ? SettingsHandler.savedMuted : false)
+		_micEnabled = State(initialValue: save ? SettingsHandler.savedMicEnabled : false)
+		_micMuted = State(initialValue: save ? SettingsHandler.savedMicMuted : true)
 		_zoomEnabled = State(initialValue: save ? SettingsHandler.savedZoomEnabled : false)
 		_constantFps = State(initialValue: save ? SettingsHandler.savedConstantFps : false)
 		_resolutions = State(initialValue: ParsecResolution.resolutions)
@@ -228,6 +232,13 @@ struct ParsecView: View
 							Button(action: toggleMute)
 							{
 								Text("Sound: \(muted ? "OFF" : "ON")")
+									.padding(8)
+									.frame(maxWidth:.infinity)
+									.multilineTextAlignment(.center)
+							}
+							Button(action: toggleMic)
+							{
+								Text(micStatusLabel())
 									.padding(8)
 									.frame(maxWidth:.infinity)
 									.multilineTextAlignment(.center)
@@ -388,6 +399,15 @@ struct ParsecView: View
 
 		CParsec.applyConfig()
 		CParsec.setMuted(muted)
+		CParsec.setMicrophoneMuted(micMuted)
+		let shouldEnableMic = micEnabled
+		DispatchQueue.global(qos: .userInitiated).async {
+			CParsec.setMicrophoneEnabled(shouldEnableMic)
+		}
+		if SettingsHandler.saveSessionSettings {
+			SettingsHandler.savedMicEnabled = shouldEnableMic
+			SettingsHandler.savedMicMuted = micMuted
+		}
 		parsecViewController.setZoomEnabled(zoomEnabled)
 
 		if SettingsHandler.saveSessionSettings {
@@ -421,6 +441,43 @@ struct ParsecView: View
 		muted.toggle()
 		CParsec.setMuted(muted)
 		if SettingsHandler.saveSessionSettings { SettingsHandler.savedMuted = muted }
+	}
+
+	func toggleMic() {
+		if !CParsec.isMicrophoneSupported() {
+			micEnabled = false
+			micMuted = true
+			if SettingsHandler.saveSessionSettings {
+				SettingsHandler.savedMicEnabled = false
+				SettingsHandler.savedMicMuted = true
+			}
+			return
+		}
+
+		if !micEnabled {
+			CParsec.setMicrophoneMuted(false)
+			CParsec.setMicrophoneEnabled(true)
+			micEnabled = CParsec.isMicrophoneEnabled()
+			micMuted = CParsec.isMicrophoneMuted()
+		} else {
+			micMuted.toggle()
+			CParsec.setMicrophoneMuted(micMuted)
+		}
+
+		if SettingsHandler.saveSessionSettings {
+			SettingsHandler.savedMicEnabled = micEnabled
+			SettingsHandler.savedMicMuted = micMuted
+		}
+	}
+
+	func micStatusLabel() -> String {
+		if !CParsec.isMicrophoneSupported() {
+			return "Mic: UNSUPPORTED"
+		}
+		if !micEnabled {
+			return "Mic: OFF"
+		}
+		return "Mic: \(micMuted ? "MUTED" : "ON")"
 	}
 
 		/*func genDisplaySheet() -> ActionSheet

@@ -18,6 +18,14 @@ struct SettingsView:View
 	@AppStorage("decoderCompatibility") var decoderCompatibility: Bool = false // Enable for stutter issues on some devices
 	@AppStorage("showKeyboardButton") var showKeyboardButton: Bool = true
 	@AppStorage("saveSessionSettings") var saveSessionSettings: Bool = true
+	@AppStorage("savedMicEnabled") var savedMicEnabled: Bool = false
+	@AppStorage("sidecarMicEnabled") var sidecarMicEnabled: Bool = false
+	@AppStorage("sidecarMicHost") var sidecarMicHost: String = "127.0.0.1"
+	@AppStorage("sidecarMicPort") var sidecarMicPort: Int = 26500
+	@AppStorage("sidecarMicToken") var sidecarMicToken: String = ""
+	@AppStorage("sidecarMicGain") var sidecarMicGain: Double = 2.5
+	@AppStorage("sidecarMicGainBuiltIn") var sidecarMicGainBuiltIn: Double = 6.0
+	@AppStorage("sidecarMicGainExternal") var sidecarMicGainExternal: Double = 1.0
 	
 	let resolutionChoices: [Choice<ParsecResolution>]
 
@@ -175,6 +183,55 @@ struct SettingsView:View
 									.frame(width:80)
 							}
 						}
+						CatTitle("Mic Sidecar (macOS)")
+						CatList()
+						{
+							CatItem("Enable Microphone (Experimental)")
+							{
+								Toggle("", isOn:$savedMicEnabled)
+									.frame(width:80)
+							}
+							CatItem("Enable Sidecar Transport")
+							{
+								Toggle("", isOn:$sidecarMicEnabled)
+									.frame(width:80)
+							}
+							CatItem("Sidecar Host")
+							{
+								TextField("192.168.1.20", text:$sidecarMicHost)
+									.multilineTextAlignment(.trailing)
+									.frame(width:160)
+									.disableAutocorrection(true)
+									.autocapitalization(.none)
+							}
+							CatItem("Sidecar Port")
+							{
+								TextField("26500", text: sidecarPortBinding)
+									.multilineTextAlignment(.trailing)
+									.keyboardType(.numberPad)
+									.frame(width:90)
+							}
+							CatItem("Shared Token")
+							{
+								TextField("Required", text:$sidecarMicToken)
+									.multilineTextAlignment(.trailing)
+									.frame(width:160)
+									.disableAutocorrection(true)
+									.autocapitalization(.none)
+							}
+							CatItem("Built-in Mic Gain")
+							{
+								Slider(value: $sidecarMicGainBuiltIn, in:1.0...8.0, step:0.1)
+									.frame(width: 160)
+								Text(String(format: "%.1fx", sidecarMicGainBuiltIn))
+							}
+							CatItem("Headset/Bluetooth Gain")
+							{
+								Slider(value: $sidecarMicGainExternal, in:1.0...8.0, step:0.1)
+									.frame(width: 160)
+								Text(String(format: "%.1fx", sidecarMicGainExternal))
+							}
+						}
 						Text(getVersionInfo())
 							.multilineTextAlignment(.center)
 							.opacity(0.5)
@@ -201,6 +258,21 @@ struct SettingsView:View
 	
 	func getVersionInfo() -> String {
 		return "Version \(Bundle.main.infoDictionary!["CFBundleShortVersionString"] ?? "Unknown versino")-\(Bundle.main.infoDictionary!["GitCommitInfo"] ?? "Unknown commit")"
+	}
+
+	var sidecarPortBinding: Binding<String> {
+		Binding(
+			get: { String(sidecarMicPort) },
+			set: { newValue in
+				let digits = newValue.filter { $0.isNumber }
+				if digits.isEmpty {
+					return
+				}
+				if let port = Int(digits) {
+					sidecarMicPort = min(max(port, 1), 65535)
+				}
+			}
+		)
 	}
 }
 

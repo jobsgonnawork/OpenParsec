@@ -20,5 +20,14 @@ struct SettingsHandler {
 	@AppStorage("savedZoomEnabled") public static var savedZoomEnabled: Bool = false
 	@AppStorage("savedConstantFps") public static var savedConstantFps: Bool = false
 	@AppStorage("savedMuted") public static var savedMuted: Bool = false
+	@AppStorage("savedMicEnabled") public static var savedMicEnabled: Bool = false
+	@AppStorage("savedMicMuted") public static var savedMicMuted: Bool = true
+	@AppStorage("sidecarMicEnabled") public static var sidecarMicEnabled: Bool = false
+	@AppStorage("sidecarMicHost") public static var sidecarMicHost: String = "127.0.0.1"
+	@AppStorage("sidecarMicPort") public static var sidecarMicPort: Int = 26500
+	@AppStorage("sidecarMicToken") public static var sidecarMicToken: String = ""
+	@AppStorage("sidecarMicGain") public static var sidecarMicGain: Double = 2.5
+	@AppStorage("sidecarMicGainBuiltIn") public static var sidecarMicGainBuiltIn: Double = 6.0
+	@AppStorage("sidecarMicGainExternal") public static var sidecarMicGainExternal: Double = 1.0
 
 }

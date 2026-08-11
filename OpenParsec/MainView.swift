@@ -601,7 +601,7 @@ struct MainView: View
 		{ timer in
 			status = CParsec.getStatus()
 
-			if status == PARSEC_CONNECTING { return } // wait
+			if status.rawValue > 0 { return } // wait while status is warning/in-progress
 
 			withAnimation { isConnecting = false }
 

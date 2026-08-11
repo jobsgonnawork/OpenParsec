@@ -6,6 +6,30 @@ This project is still a major WIP, so apologies for the currently lackluster doc
 
 Before building, make sure you have the Parsec SDK framework symlinked or copied to the `Frameworks` folder. Builds were tested on Xcode Version 12.5.
 
+## Local IPA for iPad Testing (Simple)
+
+1. Build the IPA locally:
+
+```bash
+./scripts/build_ipa.sh
+```
+
+2. Optional fake-sign (mirrors CI behavior):
+
+```bash
+./scripts/build_ipa.sh --fakesign
+```
+
+3. Output IPA path:
+
+```text
+build/ipa/OpenParsec.ipa
+```
+
+4. Install on iPad using AltStore or Sideloadly (they will re-sign with your Apple ID).
+
+Note: iOS will not install an unsigned IPA directly. You still need AltStore/Sideloadly signing at install time.
+
 ## Downloads
 <a href="https://stikstore.app/altdirect/?url=https://github.com/hugeBlack/OpenParsec/releases/download/nightly/altstore.json" target="_blank">
    <img src="https://raw.githubusercontent.com/StikStore/altdirect/refs/heads/main/assets/png/AltSource_Blue.png" alt="Add AltSource" width="200">

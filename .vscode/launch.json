@@ -1,0 +1,24 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:OpenParsec}/MicSidecarMac",
+            "name": "Debug MicSidecarReceiver (MicSidecarMac)",
+            "target": "MicSidecarReceiver",
+            "configuration": "debug",
+            "preLaunchTask": "swift: Build Debug MicSidecarReceiver (MicSidecarMac)"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:OpenParsec}/MicSidecarMac",
+            "name": "Release MicSidecarReceiver (MicSidecarMac)",
+            "target": "MicSidecarReceiver",
+            "configuration": "release",
+            "preLaunchTask": "swift: Build Release MicSidecarReceiver (MicSidecarMac)"
+        }
+    ]
+}

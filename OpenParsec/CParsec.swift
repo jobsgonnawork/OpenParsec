@@ -145,6 +145,11 @@ protocol ParsecService {
 	func setFrame(_ width: CGFloat, _ height: CGFloat, _ scale: CGFloat)
 	func renderGLFrame(timeout: UInt32)
 	func setMuted(_ muted: Bool)
+	func setMicrophoneEnabled(_ enabled: Bool)
+	func setMicrophoneMuted(_ muted: Bool)
+	func isMicrophoneEnabled() -> Bool
+	func isMicrophoneMuted() -> Bool
+	func isMicrophoneSupported() -> Bool
 	func applyConfig()
 	func sendMouseMessage(_ button: ParsecMouseButton, _ x: Int32, _ y: Int32, _ pressed: Bool)
 	func sendMouseClickMessage(_ button: ParsecMouseButton, _ pressed: Bool)
@@ -228,6 +233,31 @@ class CParsec
 	static func setMuted(_ muted: Bool)
 	{
 		parsecImpl.setMuted(muted)
+	}
+
+	static func setMicrophoneEnabled(_ enabled: Bool)
+	{
+		parsecImpl.setMicrophoneEnabled(enabled)
+	}
+
+	static func setMicrophoneMuted(_ muted: Bool)
+	{
+		parsecImpl.setMicrophoneMuted(muted)
+	}
+
+	static func isMicrophoneEnabled() -> Bool
+	{
+		parsecImpl.isMicrophoneEnabled()
+	}
+
+	static func isMicrophoneMuted() -> Bool
+	{
+		parsecImpl.isMicrophoneMuted()
+	}
+
+	static func isMicrophoneSupported() -> Bool
+	{
+		parsecImpl.isMicrophoneSupported()
 	}
 	
 	static func applyConfig()
