@@ -160,6 +160,34 @@ struct SettingsView: View {
 										.frame(width: 80)
 								}
 							}
+							CatTitle("2nd Screen on a Laptop")
+							CatList {
+								CatItem("Laptop Address") {
+									TextField("192.168.1.20", text: $settings.laptopHost)
+										.keyboardType(.numbersAndPunctuation)
+										.autocapitalization(.none)
+										.disableAutocorrection(true)
+										.multilineTextAlignment(.trailing)
+										.frame(width: 160)
+								}
+								CatItem("Port") {
+									TextField("26510", value: $settings.laptopPort, formatter: NumberFormatter())
+										.keyboardType(.numberPad)
+										.multilineTextAlignment(.trailing)
+										.frame(width: 160)
+								}
+								CatItem("Token") {
+									TextField("same as LaptopMouse", text: $settings.laptopToken)
+										.autocapitalization(.none)
+										.disableAutocorrection(true)
+										.multilineTextAlignment(.trailing)
+										.frame(width: 160)
+								}
+							}
+							Text("With 2nd Screen > On Another Device on, the cursor goes to this laptop's own mouse past the Position edge. Run LaptopMouse there with the same token.")
+								.font(.footnote)
+								.opacity(0.6)
+								.padding(.horizontal)
 							CatTitle("Developer")
 							CatList {
 								CatItem("Auto Reconnect") {

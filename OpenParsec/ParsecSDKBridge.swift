@@ -1,6 +1,7 @@
 import ParsecSDK
 import MetalKit
 import UIKit
+import Network
 import os
 
 let sdkLog = OSLog(subsystem: "com.aigch.OpenParsec", category: "sdk")
@@ -153,6 +154,141 @@ private let stream1ProbeCallback: ParsecFrameCallback = { frame, _, opaque in
 	Unmanaged<Stream1ProbeStats>.fromOpaque(opaque).takeUnretainedValue().record(frame.pointee)
 }
 
+// sends the mouse to LaptopMouse on a laptop on the same network while the cursor is on the 2nd
+// screen there, so that laptop's Parsec client draws it locally with no stream delay.
+// Protocol: LaptopMouseWin/protocol.go
+final class LaptopMouseLink {
+	private let queue = DispatchQueue(label: "openparsec.laptopmouse.udp")
+	private var connection: NWConnection?
+	private var host = ""
+	private var port = 0
+	private var token = ""
+	private var enterSeq: UInt32 = 0
+	private var ackedSeq: UInt32 = 0
+	var onReturn: ((Float) -> Void)?
+
+	var isConfigured: Bool {
+		let h = SettingsHandler.laptopHost.trimmingCharacters(in: .whitespaces)
+		let t = SettingsHandler.laptopToken
+		return !h.isEmpty && !t.isEmpty && t.utf8.count <= 255 && (1...65535).contains(SettingsHandler.laptopPort)
+	}
+
+	// side: the laptop edge the cursor comes in by, 0 left, 1 right, 2 top, 3 bottom; along: 0...1 on that edge.
+	// onAnswer runs on the link's queue with whether the laptop answered in time
+	func enter(side: UInt8, along: Float, onAnswer: @escaping (Bool) -> Void) {
+		queue.async {
+			self.refreshConfig()
+			self.enterSeq &+= 1
+			let seq = self.enterSeq
+			var payload = Data([side])
+			payload.appendLE(along.bitPattern)
+			payload.appendLE(seq)
+			self.send(1, payload)
+			self.queue.asyncAfter(deadline: .now() + 0.6) {
+				onAnswer(self.ackedSeq == seq)
+			}
+		}
+	}
+
+	func move(_ dx: Int32, _ dy: Int32) {
+		let x = Int16(clamping: dx), y = Int16(clamping: dy)
+		queue.async {
+			var payload = Data()
+			payload.appendLE(UInt16(bitPattern: x))
+			payload.appendLE(UInt16(bitPattern: y))
+			self.send(2, payload)
+		}
+	}
+
+	func button(_ button: UInt32, _ pressed: Bool) {
+		queue.async { self.send(3, Data([UInt8(clamping: button), pressed ? 1 : 0])) }
+	}
+
+	func wheel(_ dx: Int32, _ dy: Int32) {
+		let x = Int16(clamping: dx), y = Int16(clamping: dy)
+		queue.async {
+			var payload = Data()
+			payload.appendLE(UInt16(bitPattern: x))
+			payload.appendLE(UInt16(bitPattern: y))
+			self.send(4, payload)
+		}
+	}
+
+	func leave() {
+		queue.async { self.send(5, Data()) }
+	}
+
+	private func refreshConfig() {
+		let h = SettingsHandler.laptopHost.trimmingCharacters(in: .whitespaces)
+		let p = SettingsHandler.laptopPort
+		token = SettingsHandler.laptopToken
+		if h != host || p != port {
+			connection?.cancel()
+			connection = nil
+			host = h
+			port = p
+		}
+		guard connection == nil, let nwPort = NWEndpoint.Port(rawValue: UInt16(clamping: port)), !host.isEmpty else { return }
+		let c = NWConnection(host: NWEndpoint.Host(host), port: nwPort, using: .udp)
+		c.stateUpdateHandler = { state in
+			if case .failed(let error) = state {
+				appNote("[laptop] connection failed: \(error)")
+			}
+		}
+		c.start(queue: queue)
+		connection = c
+		receive(on: c)
+	}
+
+	private func send(_ kind: UInt8, _ payload: Data) {
+		if connection == nil { refreshConfig() }
+		guard let connection = connection else { return }
+		var packet = Data("OPK1".utf8)
+		let tokenData = Data(token.utf8)
+		packet.append(kind)
+		packet.append(UInt8(clamping: tokenData.count))
+		packet.append(tokenData)
+		packet.append(payload)
+		connection.send(content: packet, completion: .idempotent)
+	}
+
+	private func receive(on c: NWConnection) {
+		c.receiveMessage { [weak self] data, _, _, error in
+			guard let self = self, c === self.connection else { return }
+			if let data = data {
+				self.handle(data)
+			}
+			if error == nil {
+				self.receive(on: c)
+			}
+		}
+	}
+
+	private func handle(_ data: Data) {
+		let bytes = [UInt8](data)
+		let tokenData = [UInt8](token.utf8)
+		guard bytes.count >= 6, bytes[0..<4] == [0x4f, 0x50, 0x4b, 0x31][...], Int(bytes[5]) == tokenData.count,
+			  bytes.count >= 6 + tokenData.count, Array(bytes[6..<6 + tokenData.count]) == tokenData else { return }
+		let payload = Array(bytes[(6 + tokenData.count)...])
+		func u32(_ at: Int) -> UInt32 { UInt32(payload[at]) | UInt32(payload[at + 1]) << 8 | UInt32(payload[at + 2]) << 16 | UInt32(payload[at + 3]) << 24 }
+		switch bytes[4] {
+		case 0x81 where payload.count >= 4:
+			ackedSeq = u32(0)
+		case 0x82 where payload.count >= 4:
+			onReturn?(Float(bitPattern: u32(0)))
+		default:
+			break
+		}
+	}
+}
+
+private extension Data {
+	mutating func appendLE<T: FixedWidthInteger>(_ value: T) {
+		var le = value.littleEndian
+		Swift.withUnsafeBytes(of: &le) { append(contentsOf: $0) }
+	}
+}
+
 class ParsecSDKBridge: ParsecService {
 	var hostWidth: Float = 1920
 
@@ -228,6 +364,9 @@ class ParsecSDKBridge: ParsecService {
 	private var awayPos = CGPoint.zero
 	private var awayResidual = CGPoint.zero
 	private var awayEnabled: Bool { !stream1Live && SettingsHandler.stream1Elsewhere }
+	// the handoff goes to LaptopMouse on a laptop instead of the host, while one is set up
+	private let laptop = LaptopMouseLink()
+	private var awayViaLaptop = false
 	private var hostPerClient: CGFloat { clientWidth > 0 && hostWidth > 0 ? CGFloat(hostWidth / clientWidth) : 1 }
 	var didSetResolution = false
 	private var didReleaseOnConnect = false
@@ -254,6 +393,11 @@ class ParsecSDKBridge: ParsecService {
 		audio_init(&_audio)
 
 		self._audioPtr = UnsafeRawPointer(_audio)
+
+		laptop.onReturn = { [weak self] along in
+			guard let self = self, self.cursorAway, self.awayViaLaptop else { return }
+			self.returnFromAway(reason: "laptop", along: CGFloat(along))
+		}
 
 		do {
 			let reservedCfg = ["ssHost": "kessel-ws.parsec.app"]
@@ -542,7 +686,7 @@ class ParsecSDKBridge: ParsecService {
 		}
 		// the host says when the handed off cursor is back on the first display; a stale 0 from
 		// before the handoff doesn't count until it has seen it on the other one
-		if cursorAway {
+		if cursorAway && !awayViaLaptop {
 			if event.cursor.stream != UInt8(DEFAULT_STREAM) {
 				awayConfirmed = true
 			} else if awayConfirmed {
@@ -636,6 +780,10 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func sendMouseClickMessage(_ button: ParsecMouseButton, _ pressed: Bool) {
+		if cursorAway && awayViaLaptop {
+			laptop.button(button.rawValue, pressed)
+			return
+		}
 		var buttonMessage = ParsecMessage()
 		buttonMessage.type = MESSAGE_MOUSE_BUTTON
 		buttonMessage.mouseButton.button = button
@@ -725,12 +873,35 @@ class ParsecSDKBridge: ParsecService {
 		awayConfirmed = false
 		awayResidual = .zero
 		mouseInfo.stream = 1
-		appNote("[cursor] handed off to the other device's screen")
-		sendAway(CGFloat(dx) * k, CGFloat(dy) * k)
+		awayViaLaptop = laptop.isConfigured
+		guard awayViaLaptop else {
+			appNote("[cursor] handed off to the other device's screen")
+			sendAway(CGFloat(dx) * k, CGFloat(dy) * k)
+			return true
+		}
+		// the laptop edge facing the iPad, and how far along the iPad's edge the cursor left
+		let side: UInt8, along: CGFloat
+		switch SettingsHandler.stream1Side {
+		case .right: side = 0; along = y / max(h, 1)
+		case .left: side = 1; along = y / max(h, 1)
+		case .below: side = 2; along = x / max(w, 1)
+		case .above: side = 3; along = x / max(w, 1)
+		}
+		appNote("[cursor] handed off to the laptop at \(SettingsHandler.laptopHost)")
+		laptop.enter(side: side, along: Float(min(max(along, 0), 1))) { [weak self] answered in
+			guard !answered, let self = self, self.cursorAway, self.awayViaLaptop else { return }
+			appNote("[laptop] no answer from \(SettingsHandler.laptopHost):\(SettingsHandler.laptopPort), is LaptopMouse running with the same token?")
+			self.returnFromAway(reason: "laptop silent", along: along)
+		}
 		return true
 	}
 
 	private func moveAway(_ dx: Int32, _ dy: Int32) {
+		if awayViaLaptop {
+			// the laptop says when it reaches the edge back
+			laptop.move(dx, dy)
+			return
+		}
 		let k = hostPerClient
 		let far = CGSize(width: CGFloat(hostWidth), height: CGFloat(hostHeight))
 		var p = CGPoint(x: awayPos.x + CGFloat(dx) * k, y: awayPos.y + CGFloat(dy) * k)
@@ -768,17 +939,19 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	// put the cursor back just inside the iPad's edge, where it left the other display
-	private func returnFromAway(reason: String) {
+	// along, 0...1 on the shared edge, comes from the laptop; otherwise the estimate is used
+	private func returnFromAway(reason: String, along: CGFloat? = nil) {
 		guard cursorAway else { return }
 		cursorAway = false
+		awayViaLaptop = false
 		let w = CGFloat(clientWidth), h = CGFloat(clientHeight)
 		let k = hostPerClient
 		var x: CGFloat, y: CGFloat
 		switch SettingsHandler.stream1Side {
-		case .right: x = w - 1; y = awayPos.y / k
-		case .left: x = 1; y = awayPos.y / k
-		case .below: x = awayPos.x / k; y = h - 1
-		case .above: x = awayPos.x / k; y = 1
+		case .right: x = w - 1; y = along.map { $0 * h } ?? awayPos.y / k
+		case .left: x = 1; y = along.map { $0 * h } ?? awayPos.y / k
+		case .below: x = along.map { $0 * w } ?? awayPos.x / k; y = h - 1
+		case .above: x = along.map { $0 * w } ?? awayPos.x / k; y = 1
 		}
 		appNote("[cursor] back on the iPad (\(reason))")
 		sendMotion(stream: UInt8(DEFAULT_STREAM), Int32(x.rounded()), Int32(y.rounded()))
@@ -792,7 +965,11 @@ class ParsecSDKBridge: ParsecService {
 	private func sendMotion(stream: UInt8, _ x: Int32, _ y: Int32) {
 		if stream == UInt8(DEFAULT_STREAM) {
 			// a touch or a move back home ends a handoff
+			if cursorAway && awayViaLaptop {
+				laptop.leave()
+			}
 			cursorAway = false
+			awayViaLaptop = false
 		}
 		let bounds = stream == UInt8(DEFAULT_STREAM) ? CGSize(width: CGFloat(clientWidth), height: CGFloat(clientHeight)) : stream1ClientSize
 		mouseInfo.stream = stream
@@ -954,6 +1131,10 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func sendWheelMsg(x: Int32, y: Int32) {
+		if cursorAway && awayViaLaptop {
+			laptop.wheel(x, y)
+			return
+		}
 		var pmsg = ParsecMessage()
 		pmsg.type = MESSAGE_MOUSE_WHEEL
 		pmsg.mouseWheel.x = x

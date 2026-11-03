@@ -35,7 +35,10 @@ final class SettingsStore: ObservableObject {
 			"stream1Side": SecondScreenSide.right.rawValue,
 			"stream1Bitrate": 0,
 			"stream1Fps": 30,
-			"stream1Elsewhere": false
+			"stream1Elsewhere": false,
+			"laptopHost": "",
+			"laptopPort": 26510,
+			"laptopToken": ""
 		])
 		// values saved back when saving was off would now always apply
 		if defaults.object(forKey: "saveSessionSettings") as? Bool == false {
@@ -197,6 +200,22 @@ final class SettingsStore: ObservableObject {
 		get { defaults.bool(forKey: "stream1Elsewhere") }
 		set { store(newValue, "stream1Elsewhere") }
 	}
+
+	// LaptopMouse on a laptop that shows the 2nd screen, the cursor goes to that laptop's own mouse
+	var laptopHost: String {
+		get { defaults.string(forKey: "laptopHost") ?? "" }
+		set { store(newValue, "laptopHost") }
+	}
+
+	var laptopPort: Int {
+		get { defaults.integer(forKey: "laptopPort") }
+		set { store(newValue, "laptopPort") }
+	}
+
+	var laptopToken: String {
+		get { defaults.string(forKey: "laptopToken") ?? "" }
+		set { store(newValue, "laptopToken") }
+	}
 }
 
 struct SettingsHandler {
@@ -229,4 +248,7 @@ struct SettingsHandler {
 	static var stream1Bitrate: Int { get { SettingsStore.shared.stream1Bitrate } set { SettingsStore.shared.stream1Bitrate = newValue } }
 	static var stream1Fps: Int { get { SettingsStore.shared.stream1Fps } set { SettingsStore.shared.stream1Fps = newValue } }
 	static var stream1Elsewhere: Bool { get { SettingsStore.shared.stream1Elsewhere } set { SettingsStore.shared.stream1Elsewhere = newValue } }
+	static var laptopHost: String { get { SettingsStore.shared.laptopHost } set { SettingsStore.shared.laptopHost = newValue } }
+	static var laptopPort: Int { get { SettingsStore.shared.laptopPort } set { SettingsStore.shared.laptopPort = newValue } }
+	static var laptopToken: String { get { SettingsStore.shared.laptopToken } set { SettingsStore.shared.laptopToken = newValue } }
 }
