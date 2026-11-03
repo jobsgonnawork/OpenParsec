@@ -165,6 +165,8 @@ protocol ParsecService {
 	func pause(video: Bool, audio: Bool) -> ParsecStatus
 	func resume() -> ParsecStatus
 	func updateHostVideoConfig()
+	func startStream1Probe(output: String)
+	func stopStream1Probe()
 }
 
 class CParsec {
@@ -244,6 +246,14 @@ class CParsec {
 
 	static func updateHostVideoConfig() {
 		parsecImpl.updateHostVideoConfig()
+	}
+
+	static func startStream1Probe(output: String) {
+		parsecImpl.startStream1Probe(output: output)
+	}
+
+	static func stopStream1Probe() {
+		parsecImpl.stopStream1Probe()
 	}
 
 	static func sendMouseMessage(_ button: ParsecMouseButton, _ x: Int32, _ y: Int32, _ pressed: Bool) {

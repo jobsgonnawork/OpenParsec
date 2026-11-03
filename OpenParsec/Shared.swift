@@ -74,6 +74,8 @@ class SharedModel: ObservableObject {
 	@Published var hostDefaultBitrate = 0
 	@Published var constantFps = false
 	@Published var output = "none"
+	// display asked for on video stream 1 by the 2nd stream probe, nil while it is off
+	@Published var stream1Output: String?
 	@Published var displayConfigs: [ParsecDisplayConfig] = []
 	@Published var isBlocked = false
 
@@ -84,6 +86,7 @@ class SharedModel: ObservableObject {
 		hostDefaultBitrate = 0
 		constantFps = false
 		output = "none"
+		stream1Output = nil
 		displayConfigs = []
 		isBlocked = false
 	}

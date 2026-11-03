@@ -96,6 +96,33 @@ struct KeyBoardKeyEvent {
 	var isPressBegin: Bool
 }
 
+// counts what the 2nd stream probe gets back; only touched from the probe thread,
+// the frame callback runs inside ParsecClientPollFrame on that same thread
+private final class Stream1ProbeStats {
+	let startedAt = CACurrentMediaTime()
+	var lastReportAt = CACurrentMediaTime()
+	var frames = 0
+	var totalFrames = 0
+	var polls = 0
+	var statusCounts: [Int32: Int] = [:]
+	var lastFrame: ParsecFrame?
+
+	func record(_ frame: ParsecFrame) {
+		if totalFrames == 0 {
+			let ms = Int((CACurrentMediaTime() - startedAt) * 1000)
+			appNote("[stream1-probe] first frame after \(ms) ms, \(frame.width)x\(frame.height) full \(frame.fullWidth)x\(frame.fullHeight) format \(frame.format.rawValue) size \(frame.size)")
+		}
+		frames += 1
+		totalFrames += 1
+		lastFrame = frame
+	}
+}
+
+private let stream1ProbeCallback: ParsecFrameCallback = { frame, _, opaque in
+	guard let frame = frame, let opaque = opaque else { return }
+	Unmanaged<Stream1ProbeStats>.fromOpaque(opaque).takeUnretainedValue().record(frame.pointee)
+}
+
 class ParsecSDKBridge: ParsecService {
 	var hostWidth: Float = 1920
 
@@ -130,6 +157,23 @@ class ParsecSDKBridge: ParsecService {
 			generationLock.unlock()
 		}
 	}
+	// 0 while the 2nd stream probe is off, otherwise the token of the running probe loop
+	private var currentProbeToken = 0
+	private var probeToken: Int {
+		get {
+			generationLock.lock()
+			defer { generationLock.unlock() }
+			return currentProbeToken
+		}
+		set {
+			generationLock.lock()
+			currentProbeToken = newValue
+			generationLock.unlock()
+		}
+	}
+	private var probeCounter = 0
+	private var lastCursorStream: UInt8 = 0
+	private var clientScale: Float = 1
 	var didSetResolution = false
 	private var didReleaseOnConnect = false
 	private var capsLock = false
@@ -213,6 +257,7 @@ class ParsecSDKBridge: ParsecService {
 	func disconnect() {
 
 		pollGeneration += 1
+		endStream1Probe(reason: "disconnect")
 		// must go before the disconnect, after it the release never reaches the host
 		sendReleaseMessage()
 		ParsecClientDisconnect(_parsec)
@@ -224,6 +269,7 @@ class ParsecSDKBridge: ParsecService {
 	func reconnect(_ peerID: String) -> ParsecStatus {
 		sendReleaseMessage()
 		pollGeneration += 1
+		endStream1Probe(reason: "reconnect")
 		didSetResolution = false
 		ParsecClientDisconnect(_parsec)
 		audio_clear(&_audio)
@@ -284,6 +330,10 @@ class ParsecSDKBridge: ParsecService {
 	func setFrame(_ width: CGFloat, _ height: CGFloat, _ scale: CGFloat) {
 
 		ParsecClientSetDimensions(_parsec, UInt8(DEFAULT_STREAM), UInt32(width), UInt32(height), Float(scale))
+		clientScale = Float(scale)
+		if probeToken != 0 {
+			ParsecClientSetDimensions(_parsec, 1, UInt32(width), UInt32(height), Float(scale))
+		}
 
 		let oldSize = CGSize(width: CGFloat(clientWidth), height: CGFloat(clientHeight))
 		clientWidth = Float(width)
@@ -352,6 +402,9 @@ class ParsecSDKBridge: ParsecService {
 			handleUserDataEvent(event: e.userData)
 		} else if e.type == CLIENT_EVENT_STREAM {
 			os_log("%{public}@", log: sdkLog, "[stream] s=\(e.stream.stream) status=\(e.stream.status.rawValue)")
+			if probeToken != 0 || e.stream.stream != UInt8(DEFAULT_STREAM) {
+				appNote("[stream1-probe] stream event s=\(e.stream.stream) status=\(e.stream.status.rawValue)")
+			}
 		} else if e.type == CLIENT_EVENT_BLOCKED {
 			DispatchQueue.main.async { DataManager.model.isBlocked = true }
 		} else if e.type == CLIENT_EVENT_UNBLOCKED {
@@ -372,6 +425,10 @@ class ParsecSDKBridge: ParsecService {
 				let decoder = JSONDecoder()
 				let config = try decoder.decode(ParsecUserDataVideoConfig.self, from: Data(bytesNoCopy: pointer!, count: strlen(pointer!), deallocator: .none))
 				let videoConfig = config.video.first
+				if probeToken != 0 {
+					let echo = config.video.enumerated().map { "v\($0.offset) \($0.element.resolutionX)x\($0.element.resolutionY) out=\($0.element.output) br=\($0.element.encoderMaxBitrate) full=\($0.element.fullFPS)" }
+					appNote("[stream1-probe] host video config: \(echo.joined(separator: " | "))")
+				}
 				DispatchQueue.main.async {
 					if let cfg = videoConfig {
 						DataManager.model.resolutionX = cfg.resolutionX
@@ -416,6 +473,10 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func handleCursorEvent(event: ParsecClientCursorEvent, sawCursor: inout Bool) {
+		if event.cursor.stream != lastCursorStream {
+			appNote("[stream1-probe] cursor.stream \(lastCursorStream) -> \(event.cursor.stream)")
+			lastCursorStream = event.cursor.stream
+		}
 		let prevHidden = mouseInfo.cursorHidden
 		mouseInfo.cursorHidden = event.cursor.hidden
 		mouseInfo.mousePositionRelative = event.cursor.relative
@@ -706,6 +767,79 @@ class ParsecSDKBridge: ParsecService {
 		DispatchQueue.global().async(execute: event)
 	}
 
+	// spike: ask the host for a second display on video stream 1 and log what comes back, nothing is drawn
+	func startStream1Probe(output: String) {
+		if probeToken != 0 {
+			endStream1Probe(reason: "restart")
+		}
+		probeCounter += 1
+		let token = probeCounter
+		let generation = pollGeneration
+		probeToken = token
+
+		let enabled = ParsecClientEnableStream(_parsec, 1, true)
+		let dims = ParsecClientSetDimensions(_parsec, 1, UInt32(clientWidth), UInt32(clientHeight), clientScale)
+		appNote("[stream1-probe] start output=\(output) enable=\(enabled.rawValue) dims=\(dims.rawValue) \(Int(clientWidth))x\(Int(clientHeight))@\(clientScale)")
+		DataManager.model.stream1Output = output
+		updateHostVideoConfig()
+
+		let poll = DispatchWorkItem { [weak self] in
+			let stats = Stream1ProbeStats()
+			let opaque = Unmanaged.passUnretained(stats).toOpaque()
+			while let self = self, self.pollGeneration == generation, self.probeToken == token {
+				let status = ParsecClientPollFrame(self._parsec, 1, stream1ProbeCallback, 16, opaque)
+				stats.polls += 1
+				stats.statusCounts[status.rawValue, default: 0] += 1
+				let now = CACurrentMediaTime()
+				if now - stats.lastReportAt >= 2 {
+					self.reportStream1Probe(stats, elapsed: now - stats.lastReportAt)
+					stats.frames = 0
+					stats.polls = 0
+					stats.statusCounts.removeAll()
+					stats.lastReportAt = now
+				}
+				if status == PARSEC_NOT_RUNNING {
+					usleep(50_000)
+				}
+			}
+			appNote("[stream1-probe] poll loop ended, \(stats.totalFrames) frames in total")
+		}
+		DispatchQueue.global().async(execute: poll)
+	}
+
+	func stopStream1Probe() {
+		guard probeToken != 0 else { return }
+		endStream1Probe(reason: "stopped")
+		updateHostVideoConfig()
+	}
+
+	private func endStream1Probe(reason: String) {
+		guard probeToken != 0 else { return }
+		probeToken = 0
+		let disabled = ParsecClientEnableStream(_parsec, 1, false)
+		appNote("[stream1-probe] end (\(reason)) disable=\(disabled.rawValue)")
+		if Thread.isMainThread {
+			DataManager.model.stream1Output = nil
+		} else {
+			DispatchQueue.main.async { DataManager.model.stream1Output = nil }
+		}
+	}
+
+	private func reportStream1Probe(_ stats: Stream1ProbeStats, elapsed: CFTimeInterval) {
+		let fps = Double(stats.frames) / elapsed
+		let statuses = stats.statusCounts.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: " ")
+		var size = "no frame yet"
+		if let f = stats.lastFrame {
+			size = "\(f.width)x\(f.height) full \(f.fullWidth)x\(f.fullHeight) fmt \(f.format.rawValue)"
+		}
+		var pcs = ParsecClientStatus()
+		let st = ParsecClientGetStatus(_parsec, &pcs)
+		let dec = pcs.decoder.1
+		let m = pcs.`self`.metrics.1
+		appNote(String(format: "[stream1-probe] %.1f fps, %@, polls %ld [%@], status %d, dec1 %dx%d h265=%@, net %.0f ms, dec %.1f ms, %.1f Mbps, queued %d",
+			fps, size, stats.polls, statuses, st.rawValue, dec.width, dec.height, dec.h265 ? "1" : "0", m.networkLatency, m.decodeLatency, m.bitrate, m.queuedFrames))
+	}
+
 	func sendUserData(type: ParsecUserDataType, message: Data) {
         var nullTerminatedMessage = message
         nullTerminatedMessage.append(0)
@@ -722,6 +856,13 @@ class ParsecSDKBridge: ParsecService {
 		videoConfig.video[0].encoderMaxBitrate = DataManager.model.bitrate
 		videoConfig.video[0].fullFPS = DataManager.model.constantFps
 		videoConfig.video[0].output = DataManager.model.output
+		if let output = DataManager.model.stream1Output {
+			videoConfig.video[1].resolutionX = DataManager.model.resolutionX
+			videoConfig.video[1].resolutionY = DataManager.model.resolutionY
+			videoConfig.video[1].encoderMaxBitrate = DataManager.model.bitrate
+			videoConfig.video[1].fullFPS = DataManager.model.constantFps
+			videoConfig.video[1].output = output
+		}
 		let encoder = JSONEncoder()
 		let data = try! encoder.encode(videoConfig)
 		CParsec.sendUserData(type: .setVideoConfig, message: data)
