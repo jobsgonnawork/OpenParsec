@@ -17,7 +17,7 @@ final class ConnectionLog: ObservableObject {
 
 	@Published private(set) var lines: [String] = []
 	private var entries: [Entry] = []
-	// [stream1-probe] lines kept apart so sdk chatter can't push them out before they are copied
+	// [stream1...] and [external] lines kept apart so sdk chatter can't push them out before they are copied
 	private(set) var probeLines: [String] = []
 	private let lock = NSLock()
 	private var pending: [(time: String, text: String)] = []
@@ -47,7 +47,7 @@ final class ConnectionLog: ObservableObject {
 		flushScheduled = false
 		lock.unlock()
 		for item in fresh {
-			if item.text.hasPrefix("[stream1-probe]") {
+			if item.text.hasPrefix("[stream1") || item.text.hasPrefix("[external]") {
 				probeLines.append("\(item.time) \(item.text)")
 			}
 			if let last = entries.indices.last, entries[last].text == item.text {
@@ -186,6 +186,20 @@ class ParsecSDKBridge: ParsecService {
 		}
 	}
 	private var probeCounter = 0
+	// true while the external display renderer polls stream 1, the probe loop must not take its frames
+	private var currentStream1Drawn = false
+	var stream1Drawn: Bool {
+		get {
+			generationLock.lock()
+			defer { generationLock.unlock() }
+			return currentStream1Drawn
+		}
+		set {
+			generationLock.lock()
+			currentStream1Drawn = newValue
+			generationLock.unlock()
+		}
+	}
 	private var lastCursorStream: UInt8 = 0
 	private var clientScale: Float = 1
 	var didSetResolution = false
@@ -345,7 +359,7 @@ class ParsecSDKBridge: ParsecService {
 
 		ParsecClientSetDimensions(_parsec, UInt8(DEFAULT_STREAM), UInt32(width), UInt32(height), Float(scale))
 		clientScale = Float(scale)
-		if probeToken != 0 {
+		if probeToken != 0 && !stream1Drawn {
 			ParsecClientSetDimensions(_parsec, 1, UInt32(width), UInt32(height), Float(scale))
 		}
 
@@ -387,8 +401,13 @@ class ParsecSDKBridge: ParsecService {
 		ParsecClientGLDestroy(_parsec, UInt8(DEFAULT_STREAM))
 	}
 
-	func pollFrame(timeout: UInt32, callback: ParsecFrameCallback, opaque: UnsafeRawPointer) -> ParsecStatus {
-		ParsecClientPollFrame(_parsec, UInt8(DEFAULT_STREAM), callback, timeout, opaque)
+	func pollFrame(stream: UInt8, timeout: UInt32, callback: ParsecFrameCallback, opaque: UnsafeRawPointer) -> ParsecStatus {
+		ParsecClientPollFrame(_parsec, stream, callback, timeout, opaque)
+	}
+
+	// stream 0 goes through setFrame, which also tracks the client size for touch and cursor mapping
+	func setStreamDimensions(stream: UInt8, _ width: CGFloat, _ height: CGFloat, _ scale: CGFloat) {
+		ParsecClientSetDimensions(_parsec, stream, UInt32(width), UInt32(height), Float(scale))
 	}
 
 	@discardableResult
@@ -781,8 +800,9 @@ class ParsecSDKBridge: ParsecService {
 		DispatchQueue.global().async(execute: event)
 	}
 
-	// spike: ask the host for a second display on video stream 1 and log what comes back, nothing is drawn
-	func startStream1Probe(output: String) {
+	// ask the host for a second display on video stream 1; the external display draws it,
+	// without one the probe loop below only counts frames and logs them
+	func startStream1(output: String) {
 		if probeToken != 0 {
 			endStream1Probe(reason: "restart")
 		}
@@ -792,8 +812,12 @@ class ParsecSDKBridge: ParsecService {
 		probeToken = token
 
 		let enabled = ParsecClientEnableStream(_parsec, 1, true)
-		let dims = ParsecClientSetDimensions(_parsec, 1, UInt32(clientWidth), UInt32(clientHeight), clientScale)
-		appNote("[stream1-probe] start output=\(output) enable=\(enabled.rawValue) dims=\(dims.rawValue) \(Int(clientWidth))x\(Int(clientHeight))@\(clientScale)")
+		var dims = "set by the external display"
+		if !stream1Drawn {
+			let st = ParsecClientSetDimensions(_parsec, 1, UInt32(clientWidth), UInt32(clientHeight), clientScale)
+			dims = "\(st.rawValue) \(Int(clientWidth))x\(Int(clientHeight))@\(clientScale)"
+		}
+		appNote("[stream1-probe] start output=\(output) enable=\(enabled.rawValue) dims=\(dims)")
 		DataManager.model.stream1Output = output
 		updateHostVideoConfig()
 
@@ -801,6 +825,10 @@ class ParsecSDKBridge: ParsecService {
 			let stats = Stream1ProbeStats()
 			let opaque = Unmanaged.passUnretained(stats).toOpaque()
 			while let self = self, self.pollGeneration == generation, self.probeToken == token {
+				if self.stream1Drawn {
+					usleep(50_000)
+					continue
+				}
 				let status = ParsecClientPollFrame(self._parsec, 1, stream1ProbeCallback, 16, opaque)
 				stats.polls += 1
 				stats.statusCounts[status.rawValue, default: 0] += 1
@@ -821,7 +849,7 @@ class ParsecSDKBridge: ParsecService {
 		DispatchQueue.global().async(execute: poll)
 	}
 
-	func stopStream1Probe() {
+	func stopStream1() {
 		guard probeToken != 0 else { return }
 		endStream1Probe(reason: "stopped")
 		updateHostVideoConfig()

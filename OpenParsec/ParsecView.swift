@@ -481,7 +481,7 @@ struct ParsecView: View {
 						}
 						Menu {
 							Button(action: {
-								CParsec.stopStream1Probe()
+								CParsec.stopStream1()
 							}) {
 								if dataModel.stream1Output == nil {
 									Label("Off", systemImage: "checkmark")
@@ -491,7 +491,7 @@ struct ParsecView: View {
 							}
 							ForEach(DataManager.model.displayConfigs, id: \.self) { config in
 								Button(action: {
-									CParsec.startStream1Probe(output: config.id)
+									CParsec.startStream1(output: config.id)
 								}) {
 									if dataModel.stream1Output == config.id {
 										Label("\(config.name) \(config.adapterName)", systemImage: "checkmark")
@@ -505,7 +505,7 @@ struct ParsecView: View {
 								Label("Copy Probe Log", systemImage: "doc.on.doc")
 							}
 						} label: {
-							Text("2nd Stream Test")
+							Text("2nd Screen")
 								.padding(8)
 								.frame(maxWidth: .infinity)
 								.multilineTextAlignment(.center)
