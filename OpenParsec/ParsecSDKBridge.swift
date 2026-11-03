@@ -17,6 +17,8 @@ final class ConnectionLog: ObservableObject {
 
 	@Published private(set) var lines: [String] = []
 	private var entries: [Entry] = []
+	// [stream1-probe] lines kept apart so sdk chatter can't push them out before they are copied
+	private(set) var probeLines: [String] = []
 	private let lock = NSLock()
 	private var pending: [(time: String, text: String)] = []
 	private var flushScheduled = false
@@ -45,6 +47,9 @@ final class ConnectionLog: ObservableObject {
 		flushScheduled = false
 		lock.unlock()
 		for item in fresh {
+			if item.text.hasPrefix("[stream1-probe]") {
+				probeLines.append("\(item.time) \(item.text)")
+			}
 			if let last = entries.indices.last, entries[last].text == item.text {
 				entries[last].count += 1
 				entries[last].time = item.time
@@ -55,7 +60,16 @@ final class ConnectionLog: ObservableObject {
 		if entries.count > 200 {
 			entries.removeFirst(entries.count - 200)
 		}
+		if probeLines.count > 1000 {
+			probeLines.removeFirst(probeLines.count - 1000)
+		}
 		lines = entries.map { "\($0.time) \($0.text)\($0.count > 1 ? " x\($0.count)" : "")" }
+	}
+
+	// main thread only, like lines
+	func probeReport() -> String {
+		let recent = lines.suffix(60)
+		return (probeLines + ["--- recent log ---"] + recent).joined(separator: "\n")
 	}
 }
 

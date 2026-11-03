@@ -500,6 +500,10 @@ struct ParsecView: View {
 									}
 								}
 							}
+							Divider()
+							Button(action: copyProbeLog) {
+								Label("Copy Probe Log", systemImage: "doc.on.doc")
+							}
 						} label: {
 							Text("2nd Stream Test")
 								.padding(8)
@@ -834,6 +838,15 @@ struct ParsecView: View {
 		DispatchQueue.main.async {
 			DataManager.model.output = displayId
 			CParsec.updateHostVideoConfig()
+		}
+	}
+
+	func copyProbeLog() {
+		let count = ConnectionLog.shared.probeLines.count
+		UIPasteboard.general.string = ConnectionLog.shared.probeReport()
+		withAnimation { hint = "Copied \(count) probe lines" }
+		DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+			withAnimation { hint = nil }
 		}
 	}
 
