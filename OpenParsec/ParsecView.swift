@@ -515,15 +515,16 @@ struct ParsecView: View {
 								}
 							}
 							Menu("Bitrate") {
-								ForEach([3, 5, 8, 10, 15, 20], id: \.self) { bitrate in
+								ForEach([0, 10, 20, 30, 40, 50], id: \.self) { bitrate in
 									Button(action: {
 										SettingsHandler.stream1Bitrate = bitrate
 										applyStream1Config()
 									}) {
+										let name = bitrate == 0 ? "Same as iPad" : "\(bitrate) Mbps"
 										if settingsStore.stream1Bitrate == bitrate {
-											Label("\(bitrate) Mbps", systemImage: "checkmark")
+											Label(name, systemImage: "checkmark")
 										} else {
-											Text("\(bitrate) Mbps")
+											Text(name)
 										}
 									}
 								}

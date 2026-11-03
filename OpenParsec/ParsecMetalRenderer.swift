@@ -185,7 +185,7 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 					CParsec.drawRate = Double(drawnFrames) / elapsed
 				}
 			} else if rateSamples % 5 == 0 {
-				appNote(String(format: "[stream%d] %.1f new frames/s, %.0fx%.0f", Int(stream), Double(uploadedFrames) / elapsed, frameSize.width, frameSize.height))
+				appNote(String(format: "[stream%d] %.1f new frames/s, %.0fx%.0f, drawable %.0fx%.0f, %@", Int(stream), Double(uploadedFrames) / elapsed, frameSize.width, frameSize.height, view.drawableSize.width, view.drawableSize.height, CParsec.stream1Metrics()))
 			}
 			rateSamples += 1
 			uploadedFrames = 0

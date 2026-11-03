@@ -112,7 +112,7 @@ class ExternalDisplaySceneDelegate: UIResponder, UIWindowSceneDelegate {
 	func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
 		guard let windowScene = scene as? UIWindowScene else { return }
 		let screen = windowScene.screen
-		appNote("[external] scene connected \(Int(screen.bounds.width))x\(Int(screen.bounds.height))@\(screen.scale) max \(screen.maximumFramesPerSecond) fps")
+		appNote("[external] scene connected \(Int(screen.bounds.width))x\(Int(screen.bounds.height))@\(screen.scale), native \(Int(screen.nativeBounds.width))x\(Int(screen.nativeBounds.height))@\(screen.nativeScale), max \(screen.maximumFramesPerSecond) fps")
 		let window = UIWindow(windowScene: windowScene)
 		window.rootViewController = ExternalStreamViewController()
 		window.isHidden = false
@@ -177,12 +177,21 @@ class ExternalStreamViewController: UIViewController {
 
 	override func viewDidAppear(_ animated: Bool) {
 		super.viewDidAppear(animated)
+		var size = view.bounds.size
 		if let screen = view.window?.windowScene?.screen {
 			metalView?.preferredFramesPerSecond = screen.maximumFramesPerSecond
+			// draw in the monitor's own pixels, at the UI scale the frame is upscaled and the system shrinks it again
+			metalView?.contentScaleFactor = screen.nativeScale
+			let native = screen.nativeBounds.size
+			// past 1440p the encode costs more than the ping can carry, stay at the point size there
+			if native.width > 0 && native.width <= 2560 {
+				size = native
+			}
 		}
 		// ask the host for the monitor's size on video[1]
-		DataManager.model.stream1ResolutionX = Int(view.bounds.width)
-		DataManager.model.stream1ResolutionY = Int(view.bounds.height)
+		DataManager.model.stream1ResolutionX = Int(size.width)
+		DataManager.model.stream1ResolutionY = Int(size.height)
+		appNote("[external] asking for \(Int(size.width))x\(Int(size.height)) on stream 1, drawing at scale \(metalView?.contentScaleFactor ?? 0)")
 		if DataManager.model.stream1Output != nil {
 			CParsec.updateHostVideoConfig()
 		}

@@ -170,6 +170,7 @@ protocol ParsecService {
 	func resume() -> ParsecStatus
 	func updateHostVideoConfig()
 	func startStream1(output: String)
+	func stream1Metrics() -> String
 	func stopStream1()
 }
 
@@ -272,6 +273,10 @@ class CParsec {
 
 	static func stopStream1() {
 		parsecImpl.stopStream1()
+	}
+
+	static func stream1Metrics() -> String {
+		parsecImpl.stream1Metrics()
 	}
 
 	static func sendMouseMessage(_ button: ParsecMouseButton, _ x: Int32, _ y: Int32, _ pressed: Bool) {

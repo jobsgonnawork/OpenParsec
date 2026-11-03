@@ -954,12 +954,16 @@ class ParsecSDKBridge: ParsecService {
 		if let f = stats.lastFrame {
 			size = "\(f.width)x\(f.height) full \(f.fullWidth)x\(f.fullHeight) fmt \(f.format.rawValue)"
 		}
+		appNote(String(format: "[stream1-probe] %.1f fps, %@, polls %ld [%@], %@", fps, size, stats.polls, statuses, stream1Metrics()))
+	}
+
+	func stream1Metrics() -> String {
 		var pcs = ParsecClientStatus()
 		let st = ParsecClientGetStatus(_parsec, &pcs)
 		let dec = pcs.decoder.1
 		let m = pcs.`self`.metrics.1
-		appNote(String(format: "[stream1-probe] %.1f fps, %@, polls %ld [%@], status %d, dec1 %dx%d h265=%@, net %.0f ms, dec %.1f ms, %.1f Mbps, queued %d",
-			fps, size, stats.polls, statuses, st.rawValue, dec.width, dec.height, dec.h265 ? "1" : "0", m.networkLatency, m.decodeLatency, m.bitrate, m.queuedFrames))
+		return String(format: "status %d, dec1 %dx%d h265=%@ 444=%@, net %.0f ms, enc %.1f ms, dec %.1f ms, %.1f Mbps, queued %d, slowRT %d fastRT %d",
+			st.rawValue, dec.width, dec.height, dec.h265 ? "1" : "0", dec.color444 ? "1" : "0", m.networkLatency, m.encodeLatency, m.decodeLatency, m.bitrate, m.queuedFrames, m.slowRTs, m.fastRTs)
 	}
 
 	func sendUserData(type: ParsecUserDataType, message: Data) {

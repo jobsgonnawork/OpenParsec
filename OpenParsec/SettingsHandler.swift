@@ -33,7 +33,7 @@ final class SettingsStore: ObservableObject {
 			"savedZoomEnabled": false,
 			"savedConstantFps": false,
 			"stream1Side": SecondScreenSide.right.rawValue,
-			"stream1Bitrate": 8,
+			"stream1Bitrate": 0,
 			"stream1Fps": 30
 		])
 		// values saved back when saving was off would now always apply
