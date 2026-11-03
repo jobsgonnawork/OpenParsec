@@ -128,6 +128,8 @@ struct MouseInfo {
 	var cursorImg: CGImage?
 	var cursorHidden = false
 	var mousePositionRelative = false
+	// video stream the cursor is on, mouseX/mouseY are in that stream's client space
+	var stream: UInt8 = 0
 }
 
 protocol ParsecService {
@@ -245,6 +247,11 @@ class CParsec {
 	static var stream1Drawn: Bool {
 		get { parsecImpl.stream1Drawn }
 		set { parsecImpl.stream1Drawn = newValue }
+	}
+
+	// main thread: stream 1 is on and the external display shows it
+	static var stream1Shown: Bool {
+		DataManager.model.stream1Output != nil && parsecImpl.stream1Drawn
 	}
 
 	static func setMuted(_ muted: Bool) {

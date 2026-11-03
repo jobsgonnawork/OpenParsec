@@ -21,6 +21,9 @@ class ParsecViewController: UIViewController, UIScrollViewDelegate, ParsecTouchI
     var lastMouseX: Int32 = -1
     var lastMouseY: Int32 = -1
     var lastCursorHidden: Bool = false
+	var lastCursorStream: UInt8 = 0
+	// sub-point remainder of touchpad moves sent as integer deltas while the cursor is off the iPad
+	private var otherScreenResidual: CGPoint = .zero
 	var zoomEnabled = false
 	var appliedRenderScale: CGFloat = 0       // last contentScaleFactor applied (avoids redundant reallocations)
 	let maxRenderScale: CGFloat = 6.0         // cap on drawable density
@@ -156,11 +159,13 @@ class ParsecViewController: UIViewController, UIScrollViewDelegate, ParsecTouchI
         let currentMouseY = CParsec.mouseInfo.mouseY
         let currentHidden = CParsec.mouseInfo.cursorHidden
         let currentImg = CParsec.mouseInfo.cursorImg
+		let currentStream = CParsec.mouseInfo.stream
 
         // Skip if nothing changed
         if currentMouseX == lastMouseX &&
            currentMouseY == lastMouseY &&
            currentHidden == lastCursorHidden &&
+           currentStream == lastCursorStream &&
            currentImg == lastImg {
             return
         }
@@ -168,8 +173,10 @@ class ParsecViewController: UIViewController, UIScrollViewDelegate, ParsecTouchI
         lastMouseX = currentMouseX
         lastMouseY = currentMouseY
         lastCursorHidden = currentHidden
+		lastCursorStream = currentStream
 
-		if currentImg != nil && !currentHidden {
+		// on the 2nd screen the external display draws the cursor
+		if currentImg != nil && !currentHidden && currentStream == 0 {
 			u?.isHidden = false
 			if lastImg != currentImg {
 				u!.image = UIImage(cgImage: currentImg!)
@@ -874,6 +881,10 @@ extension ParsecViewController: UIGestureRecognizerDelegate {
 			let s = CGFloat(mouseSensitivity) / zoom
 			let dcx = (loc.x - prev.x) * s
 			let dcy = (loc.y - prev.y) * s
+			if CParsec.mouseInfo.stream != 0 || leavesTowardSecondScreen(CGPoint(x: cursorContentPos.x + dcx, y: cursorContentPos.y + dcy)) {
+				moveOnSecondScreen(dcx, dcy)
+				return
+			}
 			cursorContentPos = clampToContent(CGPoint(x: cursorContentPos.x + dcx, y: cursorContentPos.y + dcy))
 			// Smoothed velocity so a quick flick keeps gliding after the finger lifts.
 			let now = CACurrentMediaTime()
@@ -943,7 +954,7 @@ extension ParsecViewController: UIGestureRecognizerDelegate {
 	}
 
 	private func startCursorMomentum() {
-		guard SettingsHandler.cursorMode == .touchpad, !CParsec.mouseInfo.mousePositionRelative else { return }
+		guard SettingsHandler.cursorMode == .touchpad, !CParsec.mouseInfo.mousePositionRelative, CParsec.mouseInfo.stream == 0 else { return }
 		guard CACurrentMediaTime() - lastCursorMoveTime < 0.06 else { return }   // finger was still moving at release
 		guard hypot(cursorVelocity.x, cursorVelocity.y) > flingMinSpeed else { return }
 		// Less glide when zoomed out: at 1x the cursor crosses the screen instead of panning the view.
@@ -1064,6 +1075,32 @@ extension ParsecViewController: UIGestureRecognizerDelegate {
 			CParsec.sendMousePosition(Int32(cursorContentPos.x), Int32(cursorContentPos.y))
 		}
 		positionCursorOverlay()
+	}
+
+	private func leavesTowardSecondScreen(_ p: CGPoint) -> Bool {
+		guard CParsec.stream1Shown else { return false }
+		switch SettingsHandler.stream1Side {
+		case .right: return p.x > view.bounds.width
+		case .left: return p.x < 0
+		case .above: return p.y < 0
+		case .below: return p.y > view.bounds.height
+		}
+	}
+
+	// the bridge owns the cursor while it is on, or crossing to, the 2nd screen
+	private func moveOnSecondScreen(_ dx: CGFloat, _ dy: CGFloat) {
+		let total = CGPoint(x: otherScreenResidual.x + dx, y: otherScreenResidual.y + dy)
+		let ix = total.x.rounded(.towardZero)
+		let iy = total.y.rounded(.towardZero)
+		otherScreenResidual = CGPoint(x: total.x - ix, y: total.y - iy)
+		guard ix != 0 || iy != 0 else { return }
+		CParsec.sendMouseDelta(Int32(ix), Int32(iy))
+		if CParsec.mouseInfo.stream == 0 {
+			// back on the iPad, pick the position up from where the bridge left it
+			otherScreenResidual = .zero
+			cursorContentPos = CGPoint(x: CGFloat(CParsec.mouseInfo.mouseX), y: CGFloat(CParsec.mouseInfo.mouseY))
+			positionCursorOverlay()
+		}
 	}
 
 	private func clampToContent(_ p: CGPoint) -> CGPoint {

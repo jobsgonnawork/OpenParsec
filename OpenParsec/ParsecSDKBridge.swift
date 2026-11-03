@@ -17,7 +17,7 @@ final class ConnectionLog: ObservableObject {
 
 	@Published private(set) var lines: [String] = []
 	private var entries: [Entry] = []
-	// [stream1...] and [external] lines kept apart so sdk chatter can't push them out before they are copied
+	// [stream1...], [external] and [cursor] lines kept apart so sdk chatter can't push them out before they are copied
 	private(set) var probeLines: [String] = []
 	private let lock = NSLock()
 	private var pending: [(time: String, text: String)] = []
@@ -47,7 +47,7 @@ final class ConnectionLog: ObservableObject {
 		flushScheduled = false
 		lock.unlock()
 		for item in fresh {
-			if item.text.hasPrefix("[stream1") || item.text.hasPrefix("[external]") {
+			if item.text.hasPrefix("[stream1") || item.text.hasPrefix("[external]") || item.text.hasPrefix("[cursor]") {
 				probeLines.append("\(item.time) \(item.text)")
 			}
 			if let last = entries.indices.last, entries[last].text == item.text {
@@ -218,6 +218,9 @@ class ParsecSDKBridge: ParsecService {
 	}
 	private var lastCursorStream: UInt8 = 0
 	private var clientScale: Float = 1
+	private var stream1ClientSize = CGSize.zero
+	// the cursor may only cross over while stream 1 is on and something shows it
+	private var stream1Live: Bool { probeToken != 0 && stream1Drawn }
 	var didSetResolution = false
 	private var didReleaseOnConnect = false
 	private var capsLock = false
@@ -382,7 +385,7 @@ class ParsecSDKBridge: ParsecService {
 		let oldSize = CGSize(width: CGFloat(clientWidth), height: CGFloat(clientHeight))
 		clientWidth = Float(width)
 		clientHeight = Float(height)
-		guard hasFrame, oldSize.width > 0, oldSize.height > 0 else {
+		guard hasFrame, oldSize.width > 0, oldSize.height > 0, mouseInfo.stream == UInt8(DEFAULT_STREAM) else {
 			hasFrame = true
 			mouseInfo.mouseX = Int32(width / 2)
 			mouseInfo.mouseY = Int32(height / 2)
@@ -424,6 +427,9 @@ class ParsecSDKBridge: ParsecService {
 	// stream 0 goes through setFrame, which also tracks the client size for touch and cursor mapping
 	func setStreamDimensions(stream: UInt8, _ width: CGFloat, _ height: CGFloat, _ scale: CGFloat) {
 		ParsecClientSetDimensions(_parsec, stream, UInt32(width), UInt32(height), Float(scale))
+		if stream == 1 {
+			stream1ClientSize = CGSize(width: width, height: height)
+		}
 	}
 
 	@discardableResult
@@ -523,8 +529,12 @@ class ParsecSDKBridge: ParsecService {
 
 	func handleCursorEvent(event: ParsecClientCursorEvent, sawCursor: inout Bool) {
 		if event.cursor.stream != lastCursorStream {
-			appNote("[stream1-probe] cursor.stream \(lastCursorStream) -> \(event.cursor.stream)")
+			appNote("[stream1-probe] cursor.stream \(lastCursorStream) -> \(event.cursor.stream), ours \(mouseInfo.stream), relative \(event.cursor.relative)")
 			lastCursorStream = event.cursor.stream
+		}
+		// in relative mode the host moves the cursor, so it decides which screen it is on
+		if event.cursor.relative && mouseInfo.stream != event.cursor.stream && (event.cursor.stream == 0 || stream1Live) {
+			mouseInfo.stream = event.cursor.stream
 		}
 		let prevHidden = mouseInfo.cursorHidden
 		mouseInfo.cursorHidden = event.cursor.hidden
@@ -550,6 +560,9 @@ class ParsecSDKBridge: ParsecService {
 			if prevHidden && !event.cursor.hidden {
 				mouseInfo.mouseX = Int32(event.cursor.positionX)
 				mouseInfo.mouseY = Int32(event.cursor.positionY)
+				if event.cursor.stream == 0 || stream1Live {
+					mouseInfo.stream = event.cursor.stream
+				}
 			}
 
 			mouseInfo.cursorHotX = Int(event.cursor.hotX)
@@ -617,21 +630,67 @@ class ParsecSDKBridge: ParsecService {
 		if mouseInfo.mousePositionRelative {
 			sendMouseRelativeMove(dx, dy)
 		} else {
-			sendMousePosition(mouseInfo.mouseX + dx, mouseInfo.mouseY + dy)
+			moveAcrossScreens(dx, dy)
 		}
 
+	}
+
+	// absolute move that carries the cursor onto stream 1 past the edge set in stream1Side, and back
+	private func moveAcrossScreens(_ dx: Int32, _ dy: Int32) {
+		var stream = mouseInfo.stream
+		if stream != UInt8(DEFAULT_STREAM) && !stream1Live {
+			stream = UInt8(DEFAULT_STREAM)
+		}
+		var x = CGFloat(mouseInfo.mouseX + dx)
+		var y = CGFloat(mouseInfo.mouseY + dy)
+		let main = CGSize(width: CGFloat(clientWidth), height: CGFloat(clientHeight))
+		let second = stream1ClientSize
+		if stream1Live && main.width > 0 && main.height > 0 && second.width > 0 && second.height > 0 {
+			let onMain = stream == UInt8(DEFAULT_STREAM)
+			let from = onMain ? main : second
+			let to = onMain ? second : main
+			var crossed = false
+			switch (SettingsHandler.stream1Side, onMain) {
+			case (.right, true), (.left, false):
+				if x > from.width { x -= from.width; crossed = true }
+			case (.right, false), (.left, true):
+				if x < 0 { x += to.width; crossed = true }
+			case (.below, true), (.above, false):
+				if y > from.height { y -= from.height; crossed = true }
+			case (.below, false), (.above, true):
+				if y < 0 { y += to.height; crossed = true }
+			}
+			if crossed {
+				// keep the position along the shared edge proportional
+				switch SettingsHandler.stream1Side {
+				case .right, .left: y = y * to.height / from.height
+				case .above, .below: x = x * to.width / from.width
+				}
+				stream = onMain ? 1 : UInt8(DEFAULT_STREAM)
+				appNote("[cursor] crossed to stream \(stream)")
+			}
+		}
+		sendMotion(stream: stream, Int32(x.rounded()), Int32(y.rounded()))
 	}
 	static func clamp<T>(_ value: T, minValue: T, maxValue: T) -> T where T: Comparable {
 		return min(max(value, minValue), maxValue)
 	}
 
+	// positions from touches are always on the iPad, stream 0
 	func sendMousePosition(_ x: Int32, _ y: Int32) {
-		mouseInfo.mouseX = ParsecSDKBridge.clamp(x, minValue: 0, maxValue: Int32(self.clientWidth))
-		mouseInfo.mouseY = ParsecSDKBridge.clamp(y, minValue: 0, maxValue: Int32(self.clientHeight))
+		sendMotion(stream: UInt8(DEFAULT_STREAM), x, y)
+	}
+
+	private func sendMotion(stream: UInt8, _ x: Int32, _ y: Int32) {
+		let bounds = stream == UInt8(DEFAULT_STREAM) ? CGSize(width: CGFloat(clientWidth), height: CGFloat(clientHeight)) : stream1ClientSize
+		mouseInfo.stream = stream
+		mouseInfo.mouseX = ParsecSDKBridge.clamp(x, minValue: 0, maxValue: Int32(bounds.width))
+		mouseInfo.mouseY = ParsecSDKBridge.clamp(y, minValue: 0, maxValue: Int32(bounds.height))
 		var motionMessage = ParsecMessage()
 		motionMessage.type = MESSAGE_MOUSE_MOTION
-		motionMessage.mouseMotion.x = x
-		motionMessage.mouseMotion.y = y
+		motionMessage.mouseMotion.x = mouseInfo.mouseX
+		motionMessage.mouseMotion.y = mouseInfo.mouseY
+		motionMessage.mouseMotion.stream = stream
 		ParsecClientSendMessage(_parsec, &motionMessage)
 	}
 
@@ -874,6 +933,11 @@ class ParsecSDKBridge: ParsecService {
 	private func endStream1Probe(reason: String) {
 		guard probeToken != 0 else { return }
 		probeToken = 0
+		if mouseInfo.stream != UInt8(DEFAULT_STREAM) {
+			mouseInfo.stream = UInt8(DEFAULT_STREAM)
+			mouseInfo.mouseX = Int32(clientWidth / 2)
+			mouseInfo.mouseY = Int32(clientHeight / 2)
+		}
 		let disabled = ParsecClientEnableStream(_parsec, 1, false)
 		appNote("[stream1-probe] end (\(reason)) disable=\(disabled.rawValue)")
 		if Thread.isMainThread {

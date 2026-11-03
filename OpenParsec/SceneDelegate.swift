@@ -130,6 +130,8 @@ class ExternalStreamViewController: UIViewController {
 	private var metalView: MTKView?
 	private var renderer: ParsecMetalRenderer?
 	private let waitingLabel = UILabel()
+	private let cursorView = UIImageView()
+	private var cursorImage: CGImage?
 	private var watchTimer: Timer?
 	// stream 1 is started once per connection; picking Off in the menu keeps it off until the next one
 	private var autoStarted = false
@@ -138,7 +140,7 @@ class ExternalStreamViewController: UIViewController {
 		super.viewDidLoad()
 		view.backgroundColor = .black
 
-		if let device = MTLCreateSystemDefaultDevice(), let renderer = ParsecMetalRenderer(device, stream: 1, {}) {
+		if let device = MTLCreateSystemDefaultDevice(), let renderer = ParsecMetalRenderer(device, stream: 1, { [weak self] in self?.updateCursor() }) {
 			let mtk = MTKView(frame: view.bounds, device: device)
 			mtk.autoresizingMask = [.flexibleWidth, .flexibleHeight]
 			mtk.colorPixelFormat = .bgra8Unorm
@@ -152,6 +154,9 @@ class ExternalStreamViewController: UIViewController {
 		} else {
 			appNote("[external] no metal renderer, nothing will be drawn")
 		}
+
+		cursorView.isHidden = true
+		view.addSubview(cursorView)
 
 		waitingLabel.text = "OpenParsec: waiting for the 2nd screen"
 		waitingLabel.textColor = UIColor.white.withAlphaComponent(0.5)
@@ -199,10 +204,30 @@ class ExternalStreamViewController: UIViewController {
 		show(streaming: model.stream1Output != nil)
 	}
 
+	// runs after every stream 1 draw, the cursor is drawn here while the host has it on this screen
+	private func updateCursor() {
+		let info = CParsec.mouseInfo
+		guard info.stream == 1, !info.cursorHidden, let img = info.cursorImg, let frame = renderer?.frameSize, frame.width > 0, frame.height > 0 else {
+			cursorView.isHidden = true
+			return
+		}
+		if img !== cursorImage {
+			cursorView.image = UIImage(cgImage: img)
+			cursorImage = img
+		}
+		// host pixels to points on this screen; Cursor Scale's default 0.5 means actual size
+		let fit = min(view.bounds.width / frame.width, view.bounds.height / frame.height)
+		let cs = fit * CGFloat(SettingsHandler.cursorScale) * 2
+		cursorView.frame = CGRect(x: CGFloat(info.mouseX) - CGFloat(info.cursorHotX) * cs, y: CGFloat(info.mouseY) - CGFloat(info.cursorHotY) * cs,
+								  width: CGFloat(info.cursorWidth) * cs, height: CGFloat(info.cursorHeight) * cs)
+		cursorView.isHidden = false
+	}
+
 	private func show(streaming: Bool) {
 		guard metalView?.isPaused != !streaming else { return }
 		metalView?.isPaused = !streaming
 		waitingLabel.isHidden = streaming
+		cursorView.isHidden = true
 		if !streaming {
 			renderer?.reset()
 		}

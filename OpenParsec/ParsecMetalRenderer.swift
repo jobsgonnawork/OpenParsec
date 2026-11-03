@@ -39,7 +39,7 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 	private let inFlight = DispatchSemaphore(value: 3)
 	private var planes: [(y: MTLTexture, c: MTLTexture)?] = [nil, nil, nil]
 	private var current = -1
-	private var frameSize = CGSize.zero
+	private(set) var frameSize = CGSize.zero
 	let stream: UInt8
 	let updateImage: () -> Void
 
