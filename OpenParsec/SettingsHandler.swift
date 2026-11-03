@@ -31,7 +31,10 @@ final class SettingsStore: ObservableObject {
 			"showConnectionLog": true,
 			"autoConnectOnLaunch": false,
 			"savedZoomEnabled": false,
-			"savedConstantFps": false
+			"savedConstantFps": false,
+			"stream1Side": SecondScreenSide.right.rawValue,
+			"stream1Bitrate": 8,
+			"stream1Fps": 30
 		])
 		// values saved back when saving was off would now always apply
 		if defaults.object(forKey: "saveSessionSettings") as? Bool == false {
@@ -170,6 +173,22 @@ final class SettingsStore: ObservableObject {
 		get { defaults.bool(forKey: "savedConstantFps") }
 		set { store(newValue, "savedConstantFps") }
 	}
+
+	// where the 2nd host display sits next to the first, the cursor crosses over on that edge
+	var stream1Side: SecondScreenSide {
+		get { SecondScreenSide(rawValue: defaults.integer(forKey: "stream1Side")) ?? .right }
+		set { store(newValue.rawValue, "stream1Side") }
+	}
+
+	var stream1Bitrate: Int {
+		get { defaults.integer(forKey: "stream1Bitrate") }
+		set { store(newValue, "stream1Bitrate") }
+	}
+
+	var stream1Fps: Int {
+		get { defaults.integer(forKey: "stream1Fps") }
+		set { store(newValue, "stream1Fps") }
+	}
 }
 
 struct SettingsHandler {
@@ -198,4 +217,7 @@ struct SettingsHandler {
 	static var autoConnectOnLaunch: Bool { get { SettingsStore.shared.autoConnectOnLaunch } set { SettingsStore.shared.autoConnectOnLaunch = newValue } }
 	static var zoomEnabled: Bool { get { SettingsStore.shared.zoomEnabled } set { SettingsStore.shared.zoomEnabled = newValue } }
 	static var constantFps: Bool { get { SettingsStore.shared.constantFps } set { SettingsStore.shared.constantFps = newValue } }
+	static var stream1Side: SecondScreenSide { get { SettingsStore.shared.stream1Side } set { SettingsStore.shared.stream1Side = newValue } }
+	static var stream1Bitrate: Int { get { SettingsStore.shared.stream1Bitrate } set { SettingsStore.shared.stream1Bitrate = newValue } }
+	static var stream1Fps: Int { get { SettingsStore.shared.stream1Fps } set { SettingsStore.shared.stream1Fps = newValue } }
 }

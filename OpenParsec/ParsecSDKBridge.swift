@@ -105,6 +105,22 @@ enum MenuSwipeEdge: Int {
 	case off
 }
 
+enum SecondScreenSide: Int, CaseIterable {
+	case right
+	case left
+	case above
+	case below
+
+	var desc: String {
+		switch self {
+		case .right: return "Right"
+		case .left: return "Left"
+		case .above: return "Above"
+		case .below: return "Below"
+		}
+	}
+}
+
 struct KeyBoardKeyEvent {
 	var input: UIKey?
 	var isPressBegin: Bool
@@ -459,7 +475,7 @@ class ParsecSDKBridge: ParsecService {
 				let config = try decoder.decode(ParsecUserDataVideoConfig.self, from: Data(bytesNoCopy: pointer!, count: strlen(pointer!), deallocator: .none))
 				let videoConfig = config.video.first
 				if probeToken != 0 {
-					let echo = config.video.enumerated().map { "v\($0.offset) \($0.element.resolutionX)x\($0.element.resolutionY) out=\($0.element.output) br=\($0.element.encoderMaxBitrate) full=\($0.element.fullFPS)" }
+					let echo = config.video.enumerated().map { "v\($0.offset) \($0.element.resolutionX)x\($0.element.resolutionY) out=\($0.element.output) br=\($0.element.encoderMaxBitrate) fps=\($0.element.encoderFPS) full=\($0.element.fullFPS)" }
 					appNote("[stream1-probe] host video config: \(echo.joined(separator: " | "))")
 				}
 				DispatchQueue.main.async {
@@ -899,10 +915,12 @@ class ParsecSDKBridge: ParsecService {
 		videoConfig.video[0].fullFPS = DataManager.model.constantFps
 		videoConfig.video[0].output = DataManager.model.output
 		if let output = DataManager.model.stream1Output {
-			videoConfig.video[1].resolutionX = DataManager.model.resolutionX
-			videoConfig.video[1].resolutionY = DataManager.model.resolutionY
-			videoConfig.video[1].encoderMaxBitrate = DataManager.model.bitrate
-			videoConfig.video[1].fullFPS = DataManager.model.constantFps
+			let model = DataManager.model
+			videoConfig.video[1].resolutionX = model.stream1ResolutionX > 0 ? model.stream1ResolutionX : model.resolutionX
+			videoConfig.video[1].resolutionY = model.stream1ResolutionY > 0 ? model.stream1ResolutionY : model.resolutionY
+			videoConfig.video[1].encoderMaxBitrate = SettingsHandler.stream1Bitrate > 0 ? SettingsHandler.stream1Bitrate : model.bitrate
+			videoConfig.video[1].encoderFPS = SettingsHandler.stream1Fps
+			videoConfig.video[1].fullFPS = model.constantFps
 			videoConfig.video[1].output = output
 		}
 		let encoder = JSONEncoder()

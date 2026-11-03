@@ -501,6 +501,48 @@ struct ParsecView: View {
 								}
 							}
 							Divider()
+							Menu("Position") {
+								ForEach(SecondScreenSide.allCases, id: \.self) { side in
+									Button(action: {
+										SettingsHandler.stream1Side = side
+									}) {
+										if settingsStore.stream1Side == side {
+											Label(side.desc, systemImage: "checkmark")
+										} else {
+											Text(side.desc)
+										}
+									}
+								}
+							}
+							Menu("Bitrate") {
+								ForEach([3, 5, 8, 10, 15, 20], id: \.self) { bitrate in
+									Button(action: {
+										SettingsHandler.stream1Bitrate = bitrate
+										applyStream1Config()
+									}) {
+										if settingsStore.stream1Bitrate == bitrate {
+											Label("\(bitrate) Mbps", systemImage: "checkmark")
+										} else {
+											Text("\(bitrate) Mbps")
+										}
+									}
+								}
+							}
+							Menu("Frame Rate") {
+								ForEach([30, 60], id: \.self) { fps in
+									Button(action: {
+										SettingsHandler.stream1Fps = fps
+										applyStream1Config()
+									}) {
+										if settingsStore.stream1Fps == fps {
+											Label("\(fps) FPS", systemImage: "checkmark")
+										} else {
+											Text("\(fps) FPS")
+										}
+									}
+								}
+							}
+							Divider()
 							Button(action: copyProbeLog) {
 								Label("Copy Probe Log", systemImage: "doc.on.doc")
 							}
@@ -839,6 +881,11 @@ struct ParsecView: View {
 			DataManager.model.output = displayId
 			CParsec.updateHostVideoConfig()
 		}
+	}
+
+	func applyStream1Config() {
+		guard DataManager.model.stream1Output != nil else { return }
+		CParsec.updateHostVideoConfig()
 	}
 
 	func copyProbeLog() {

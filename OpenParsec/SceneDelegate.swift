@@ -175,6 +175,12 @@ class ExternalStreamViewController: UIViewController {
 		if let screen = view.window?.windowScene?.screen {
 			metalView?.preferredFramesPerSecond = screen.maximumFramesPerSecond
 		}
+		// ask the host for the monitor's size on video[1]
+		DataManager.model.stream1ResolutionX = Int(view.bounds.width)
+		DataManager.model.stream1ResolutionY = Int(view.bounds.height)
+		if DataManager.model.stream1Output != nil {
+			CParsec.updateHostVideoConfig()
+		}
 	}
 
 	private func watch() {
