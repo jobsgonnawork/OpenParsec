@@ -479,6 +479,33 @@ struct ParsecView: View {
 								.frame(maxWidth: .infinity)
 								.multilineTextAlignment(.center)
 						}
+						Menu {
+							Button(action: {
+								CParsec.stopStream1Probe()
+							}) {
+								if dataModel.stream1Output == nil {
+									Label("Off", systemImage: "checkmark")
+								} else {
+									Text("Off")
+								}
+							}
+							ForEach(DataManager.model.displayConfigs, id: \.self) { config in
+								Button(action: {
+									CParsec.startStream1Probe(output: config.id)
+								}) {
+									if dataModel.stream1Output == config.id {
+										Label("\(config.name) \(config.adapterName)", systemImage: "checkmark")
+									} else {
+										Text("\(config.name) \(config.adapterName)")
+									}
+								}
+							}
+						} label: {
+							Text("2nd Stream Test")
+								.padding(8)
+								.frame(maxWidth: .infinity)
+								.multilineTextAlignment(.center)
+						}
 					}
 
 					Button(action: toggleConstantFps) {
