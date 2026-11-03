@@ -1078,7 +1078,7 @@ extension ParsecViewController: UIGestureRecognizerDelegate {
 	}
 
 	private func leavesTowardSecondScreen(_ p: CGPoint) -> Bool {
-		guard CParsec.stream1Shown else { return false }
+		guard CParsec.stream1Shown || (SettingsHandler.stream1Elsewhere && DataManager.model.displayConfigs.count > 1) else { return false }
 		switch SettingsHandler.stream1Side {
 		case .right: return p.x > view.bounds.width
 		case .left: return p.x < 0

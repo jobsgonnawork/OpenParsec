@@ -34,7 +34,8 @@ final class SettingsStore: ObservableObject {
 			"savedConstantFps": false,
 			"stream1Side": SecondScreenSide.right.rawValue,
 			"stream1Bitrate": 0,
-			"stream1Fps": 30
+			"stream1Fps": 30,
+			"stream1Elsewhere": false
 		])
 		// values saved back when saving was off would now always apply
 		if defaults.object(forKey: "saveSessionSettings") as? Bool == false {
@@ -189,6 +190,13 @@ final class SettingsStore: ObservableObject {
 		get { defaults.integer(forKey: "stream1Fps") }
 		set { store(newValue, "stream1Fps") }
 	}
+
+	// the 2nd host display is watched on another device (e.g. Add Screens in the desktop client),
+	// so without a monitor here the cursor still leaves the iPad on the Position edge
+	var stream1Elsewhere: Bool {
+		get { defaults.bool(forKey: "stream1Elsewhere") }
+		set { store(newValue, "stream1Elsewhere") }
+	}
 }
 
 struct SettingsHandler {
@@ -220,4 +228,5 @@ struct SettingsHandler {
 	static var stream1Side: SecondScreenSide { get { SettingsStore.shared.stream1Side } set { SettingsStore.shared.stream1Side = newValue } }
 	static var stream1Bitrate: Int { get { SettingsStore.shared.stream1Bitrate } set { SettingsStore.shared.stream1Bitrate = newValue } }
 	static var stream1Fps: Int { get { SettingsStore.shared.stream1Fps } set { SettingsStore.shared.stream1Fps = newValue } }
+	static var stream1Elsewhere: Bool { get { SettingsStore.shared.stream1Elsewhere } set { SettingsStore.shared.stream1Elsewhere = newValue } }
 }

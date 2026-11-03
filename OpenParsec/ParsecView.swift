@@ -501,6 +501,15 @@ struct ParsecView: View {
 								}
 							}
 							Divider()
+							Button(action: {
+								SettingsHandler.stream1Elsewhere.toggle()
+							}) {
+								if settingsStore.stream1Elsewhere {
+									Label("On Another Device", systemImage: "checkmark")
+								} else {
+									Text("On Another Device")
+								}
+							}
 							Menu("Position") {
 								ForEach(SecondScreenSide.allCases, id: \.self) { side in
 									Button(action: {

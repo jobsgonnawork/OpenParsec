@@ -221,6 +221,14 @@ class ParsecSDKBridge: ParsecService {
 	private var stream1ClientSize = CGSize.zero
 	// the cursor may only cross over while stream 1 is on and something shows it
 	private var stream1Live: Bool { probeToken != 0 && stream1Drawn }
+	// cursor handed to the host on a display another device shows; moves go relative and the
+	// position there is only estimated, in host pixels, to know when it comes back
+	private var cursorAway = false
+	private var awayConfirmed = false
+	private var awayPos = CGPoint.zero
+	private var awayResidual = CGPoint.zero
+	private var awayEnabled: Bool { !stream1Live && SettingsHandler.stream1Elsewhere }
+	private var hostPerClient: CGFloat { clientWidth > 0 && hostWidth > 0 ? CGFloat(hostWidth / clientWidth) : 1 }
 	var didSetResolution = false
 	private var didReleaseOnConnect = false
 	private var capsLock = false
@@ -529,11 +537,20 @@ class ParsecSDKBridge: ParsecService {
 
 	func handleCursorEvent(event: ParsecClientCursorEvent, sawCursor: inout Bool) {
 		if event.cursor.stream != lastCursorStream {
-			appNote("[stream1-probe] cursor.stream \(lastCursorStream) -> \(event.cursor.stream), ours \(mouseInfo.stream), relative \(event.cursor.relative)")
+			appNote("[stream1-probe] cursor.stream \(lastCursorStream) -> \(event.cursor.stream), ours \(mouseInfo.stream), relative \(event.cursor.relative)\(cursorAway ? ", away" : "")")
 			lastCursorStream = event.cursor.stream
 		}
+		// the host says when the handed off cursor is back on the first display; a stale 0 from
+		// before the handoff doesn't count until it has seen it on the other one
+		if cursorAway {
+			if event.cursor.stream != UInt8(DEFAULT_STREAM) {
+				awayConfirmed = true
+			} else if awayConfirmed {
+				returnFromAway(reason: "host")
+			}
+		}
 		// in relative mode the host moves the cursor, so it decides which screen it is on
-		if event.cursor.relative && mouseInfo.stream != event.cursor.stream && (event.cursor.stream == 0 || stream1Live) {
+		if event.cursor.relative && !cursorAway && mouseInfo.stream != event.cursor.stream && (event.cursor.stream == 0 || stream1Live) {
 			mouseInfo.stream = event.cursor.stream
 		}
 		let prevHidden = mouseInfo.cursorHidden
@@ -560,7 +577,7 @@ class ParsecSDKBridge: ParsecService {
 			if prevHidden && !event.cursor.hidden {
 				mouseInfo.mouseX = Int32(event.cursor.positionX)
 				mouseInfo.mouseY = Int32(event.cursor.positionY)
-				if event.cursor.stream == 0 || stream1Live {
+				if !cursorAway && (event.cursor.stream == 0 || stream1Live) {
 					mouseInfo.stream = event.cursor.stream
 				}
 			}
@@ -637,6 +654,13 @@ class ParsecSDKBridge: ParsecService {
 
 	// absolute move that carries the cursor onto stream 1 past the edge set in stream1Side, and back
 	private func moveAcrossScreens(_ dx: Int32, _ dy: Int32) {
+		if cursorAway {
+			moveAway(dx, dy)
+			return
+		}
+		if mouseInfo.stream == UInt8(DEFAULT_STREAM) && awayEnabled && startAway(dx, dy) {
+			return
+		}
 		var stream = mouseInfo.stream
 		if stream != UInt8(DEFAULT_STREAM) && !stream1Live {
 			stream = UInt8(DEFAULT_STREAM)
@@ -676,12 +700,100 @@ class ParsecSDKBridge: ParsecService {
 		return min(max(value, minValue), maxValue)
 	}
 
+	// true if this move leaves the iPad on the Position edge, the overshoot goes to the host as relative motion
+	private func startAway(_ dx: Int32, _ dy: Int32) -> Bool {
+		let w = CGFloat(clientWidth), h = CGFloat(clientHeight)
+		let x = CGFloat(mouseInfo.mouseX + dx), y = CGFloat(mouseInfo.mouseY + dy)
+		let k = hostPerClient
+		// the other display's size isn't known, assume it matches the first
+		let far = CGSize(width: CGFloat(hostWidth), height: CGFloat(hostHeight))
+		switch SettingsHandler.stream1Side {
+		case .right:
+			guard x > w else { return false }
+			awayPos = CGPoint(x: (x - w) * k, y: y * k)
+		case .left:
+			guard x < 0 else { return false }
+			awayPos = CGPoint(x: far.width + x * k, y: y * k)
+		case .below:
+			guard y > h else { return false }
+			awayPos = CGPoint(x: x * k, y: (y - h) * k)
+		case .above:
+			guard y < 0 else { return false }
+			awayPos = CGPoint(x: x * k, y: far.height + y * k)
+		}
+		cursorAway = true
+		awayConfirmed = false
+		awayResidual = .zero
+		mouseInfo.stream = 1
+		appNote("[cursor] handed off to the other device's screen")
+		sendAway(CGFloat(dx) * k, CGFloat(dy) * k)
+		return true
+	}
+
+	private func moveAway(_ dx: Int32, _ dy: Int32) {
+		let k = hostPerClient
+		let far = CGSize(width: CGFloat(hostWidth), height: CGFloat(hostHeight))
+		var p = CGPoint(x: awayPos.x + CGFloat(dx) * k, y: awayPos.y + CGFloat(dy) * k)
+		// the host stops the cursor at the far edges, only the edge back to the iPad stays open
+		let back: Bool
+		switch SettingsHandler.stream1Side {
+		case .right:
+			p = CGPoint(x: min(p.x, far.width), y: min(max(p.y, 0), far.height))
+			back = p.x < 0
+		case .left:
+			p = CGPoint(x: max(p.x, 0), y: min(max(p.y, 0), far.height))
+			back = p.x > far.width
+		case .below:
+			p = CGPoint(x: min(max(p.x, 0), far.width), y: min(p.y, far.height))
+			back = p.y < 0
+		case .above:
+			p = CGPoint(x: min(max(p.x, 0), far.width), y: max(p.y, 0))
+			back = p.y > far.height
+		}
+		awayPos = p
+		if back {
+			returnFromAway(reason: "estimate")
+		} else {
+			sendAway(CGFloat(dx) * k, CGFloat(dy) * k)
+		}
+	}
+
+	private func sendAway(_ dx: CGFloat, _ dy: CGFloat) {
+		let total = CGPoint(x: awayResidual.x + dx, y: awayResidual.y + dy)
+		let ix = total.x.rounded(.towardZero), iy = total.y.rounded(.towardZero)
+		awayResidual = CGPoint(x: total.x - ix, y: total.y - iy)
+		if ix != 0 || iy != 0 {
+			sendMouseRelativeMove(Int32(ix), Int32(iy))
+		}
+	}
+
+	// put the cursor back just inside the iPad's edge, where it left the other display
+	private func returnFromAway(reason: String) {
+		guard cursorAway else { return }
+		cursorAway = false
+		let w = CGFloat(clientWidth), h = CGFloat(clientHeight)
+		let k = hostPerClient
+		var x: CGFloat, y: CGFloat
+		switch SettingsHandler.stream1Side {
+		case .right: x = w - 1; y = awayPos.y / k
+		case .left: x = 1; y = awayPos.y / k
+		case .below: x = awayPos.x / k; y = h - 1
+		case .above: x = awayPos.x / k; y = 1
+		}
+		appNote("[cursor] back on the iPad (\(reason))")
+		sendMotion(stream: UInt8(DEFAULT_STREAM), Int32(x.rounded()), Int32(y.rounded()))
+	}
+
 	// positions from touches are always on the iPad, stream 0
 	func sendMousePosition(_ x: Int32, _ y: Int32) {
 		sendMotion(stream: UInt8(DEFAULT_STREAM), x, y)
 	}
 
 	private func sendMotion(stream: UInt8, _ x: Int32, _ y: Int32) {
+		if stream == UInt8(DEFAULT_STREAM) {
+			// a touch or a move back home ends a handoff
+			cursorAway = false
+		}
 		let bounds = stream == UInt8(DEFAULT_STREAM) ? CGSize(width: CGFloat(clientWidth), height: CGFloat(clientHeight)) : stream1ClientSize
 		mouseInfo.stream = stream
 		mouseInfo.mouseX = ParsecSDKBridge.clamp(x, minValue: 0, maxValue: Int32(bounds.width))
