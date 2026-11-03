@@ -72,6 +72,27 @@ jobs:
           name: ${{ env.archive_path }}.xcarchive.tar
           path: ${{ env.archive_path }}.xcarchive.tar
 
+  laptopmouse:
+    name: Build LaptopMouse for Windows
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+      - name: Test and build
+        working-directory: LaptopMouseWin
+        run: |
+          go test ./...
+          GOOS=windows GOARCH=amd64 go build -o LaptopMouse.exe .
+          GOOS=windows GOARCH=arm64 go build -o LaptopMouse-arm64.exe .
+      - name: Upload a Build Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LaptopMouse
+          path: LaptopMouseWin/*.exe
+
   package:
     name: Create fake-signed ipa
     runs-on: ubuntu-latest
