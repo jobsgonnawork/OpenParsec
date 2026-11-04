@@ -85,8 +85,8 @@ jobs:
         working-directory: LaptopMouseWin
         run: |
           go test ./...
-          GOOS=windows GOARCH=amd64 go build -o LaptopMouse.exe .
-          GOOS=windows GOARCH=arm64 go build -o LaptopMouse-arm64.exe .
+          GOOS=windows GOARCH=amd64 go build -ldflags "-H=windowsgui" -o LaptopMouse.exe .
+          GOOS=windows GOARCH=arm64 go build -ldflags "-H=windowsgui" -o LaptopMouse-arm64.exe .
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v4
         with:

@@ -13,27 +13,30 @@ With LaptopMouse running, the iPad sends its mouse to the laptop instead, from t
 1. Get `LaptopMouse.exe` (`LaptopMouse-arm64.exe` for ARM laptops) from the **LaptopMouse** artifact of the GitHub Actions run, or build it on any machine with Go:
 
    ```bash
-   GOOS=windows GOARCH=amd64 go build -o LaptopMouse.exe .
+   GOOS=windows GOARCH=amd64 go build -ldflags "-H=windowsgui" -o LaptopMouse.exe .
    ```
 
-2. On the laptop, open the Parsec window for display 2 full screen on the laptop's main display, then run:
+2. Put it somewhere it can stay, such as Documents, and double-click it. It has no window: it sits next to the clock. The first time, it makes up a token, sets itself to start with Windows, and shows the address and token to enter on the iPad. Allow it through Windows Firewall if asked.
 
-   ```
-   LaptopMouse.exe -token pick-a-secret
-   ```
+   The tray menu shows the addresses and the token (click it to copy), and turns **Start with Windows** on or off. If the iPad can't reach the laptop, for example on Wi-Fi that keeps devices apart, install Tailscale on both and use the laptop's `100.x` address.
 
-   Allow it through Windows Firewall on private networks. It prints the laptop's local addresses.
+   On the laptop, open the Parsec window for display 2 full screen on the laptop's main display.
 
 3. On the iPad, in OpenParsec:
    - **Settings → 2nd Screen on a Laptop**: enter one of those addresses, port `26510`, and the same token.
    - **2nd Screen menu during a stream**: turn on **On Another Device**, and set **Position** to match the display arrangement on the host.
    - The first time, iOS asks for local network access. Allow it.
 
-## Options
+## Settings
 
+They are saved in `%APPDATA%\LaptopMouse\config.json` (**Edit settings** in the tray menu). Quit and start LaptopMouse again after changing them. The same flags set them from a terminal, and are saved for next time:
+
+- `-token`: the token the iPad sends.
 - `-port 26510`: UDP port.
-- `-speed 1.0`: multiplies the iPad's moves, if the cursor feels too slow or too fast on the laptop.
-- `-wheel 1`: multiplies the iPad's scroll, which already comes in Windows units (120 per notch). Lower it, e.g. `-wheel 0.5`, if scrolling feels too fast.
+- `-speed 1`: multiplies the iPad's moves, if the cursor feels too slow or too fast on the laptop.
+- `-wheel 1`: multiplies the iPad's scroll, which already comes in Windows units (120 per notch). Lower it, e.g. `0.5`, if scrolling feels too fast.
+
+The log is in `%APPDATA%\LaptopMouse\laptopmouse.log` (**Open log**).
 
 ## Notes
 
