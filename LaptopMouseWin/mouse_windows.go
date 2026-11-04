@@ -102,10 +102,11 @@ func (winMouse) button(b byte, pressed bool) {
 	send(mouseInputEvent{flags: flags, mouseData: data})
 }
 
-// Parsec's negative y scrolls up, Windows' positive mouseData does
+// the iPad's wheel is tuned for a macOS host with natural scrolling, so on Windows y goes through
+// as is, which feels the same way round as on the iPad
 func (winMouse) wheel(dx, dy int) {
 	if dy != 0 {
-		send(mouseInputEvent{flags: mouseWheel, mouseData: uint32(int32(-dy))})
+		send(mouseInputEvent{flags: mouseWheel, mouseData: uint32(int32(dy))})
 	}
 	if dx != 0 {
 		send(mouseInputEvent{flags: mouseHWheel, mouseData: uint32(int32(dx))})
