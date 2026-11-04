@@ -369,8 +369,10 @@ class ParsecSDKBridge: ParsecService {
 	private let laptop = LaptopMouseLink()
 	private var awayViaLaptop = false
 	// buttons pressed on the laptop that came back still held, so a drag started there carries on
-	// here; their release goes to the laptop, where they were pressed
+	// here. The drop goes to the host, since a release from the laptop's Parsec client lands where
+	// its own cursor is, at the laptop's edge; the laptop lets go of them on the next handoff.
 	private var laptopHeld = Set<UInt32>()
+	private var buttonsDown = Set<UInt32>()
 	private var hostPerClient: CGFloat { clientWidth > 0 && hostWidth > 0 ? CGFloat(hostWidth / clientWidth) : 1 }
 	var didSetResolution = false
 	private var didReleaseOnConnect = false
@@ -466,6 +468,7 @@ class ParsecSDKBridge: ParsecService {
 			laptop.button(button, false)
 		}
 		laptopHeld.removeAll()
+		buttonsDown.removeAll()
 		// must go before the disconnect, after it the release never reaches the host
 		sendReleaseMessage()
 		ParsecClientDisconnect(_parsec)
@@ -785,7 +788,12 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func sendMouseClickMessage(_ button: ParsecMouseButton, _ pressed: Bool) {
-		if cursorAway && awayViaLaptop || !pressed && laptopHeld.contains(button.rawValue) {
+		if pressed {
+			buttonsDown.insert(button.rawValue)
+		} else {
+			buttonsDown.remove(button.rawValue)
+		}
+		if cursorAway && awayViaLaptop {
 			laptopHeld.remove(button.rawValue)
 			laptop.button(button.rawValue, pressed)
 			return
@@ -899,6 +907,12 @@ class ParsecSDKBridge: ParsecService {
 			appNote("[laptop] no answer from \(SettingsHandler.laptopHost):\(SettingsHandler.laptopPort), is LaptopMouse running with the same token?")
 			self.returnFromAway(reason: "laptop silent", along: along)
 		}
+		// buttons left held on the laptop by a drag dropped on the iPad: let go now, at the laptop's
+		// edge where the cursor is heading anyway, unless this is a drag coming back to the laptop
+		for button in laptopHeld where !buttonsDown.contains(button) {
+			laptop.button(button, false)
+		}
+		laptopHeld.removeAll()
 		return true
 	}
 
