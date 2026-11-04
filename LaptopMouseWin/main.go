@@ -31,7 +31,8 @@ type session struct {
 	rx, ry float64
 	// same for the wheel, when -wheel scales it down
 	wx, wy float64
-	// buttons held on this side, released if the cursor leaves
+	// buttons pressed on this side; still held after the cursor leaves mid-drag, until the iPad
+	// lets go, so a window dragged from here can be dropped on the iPad's screen
 	held map[byte]bool
 }
 
@@ -67,12 +68,15 @@ func (s *session) handle(p packet, token string) []byte {
 		}
 		return s.move(float64(i16(p.payload, 0)), float64(i16(p.payload, 2)), token)
 	case typeButton:
-		if !s.active || len(p.payload) < 2 {
+		if len(p.payload) < 2 {
 			return nil
 		}
-		pressed := p.payload[1] != 0
-		s.held[p.payload[0]] = pressed
-		s.m.button(p.payload[0], pressed)
+		b, pressed := p.payload[0], p.payload[1] != 0
+		if !s.active && (pressed || !s.held[b]) {
+			return nil
+		}
+		s.held[b] = pressed
+		s.m.button(b, pressed)
 	case typeWheel:
 		if !s.active || len(p.payload) < 4 {
 			return nil
@@ -115,10 +119,15 @@ func (s *session) move(dx, dy float64, token string) []byte {
 		out, along = ny > maxY, nx/maxX
 	}
 	if out {
-		s.release()
 		s.active = false
-		log.Printf("cursor out through the %s edge at %.2f, back to the iPad", sideName(s.side), clamp01(along))
-		return build(typeReturn, token, putF32(float32(clamp01(along))))
+		var mask byte
+		for b, down := range s.held {
+			if down && b >= 1 && b <= 8 {
+				mask |= 1 << (b - 1)
+			}
+		}
+		log.Printf("cursor out through the %s edge at %.2f, back to the iPad, buttons held %08b", sideName(s.side), clamp01(along), mask)
+		return build(typeReturn, token, append(putF32(float32(clamp01(along))), mask))
 	}
 	s.m.moveTo(int(math.Max(0, math.Min(nx, maxX))), int(math.Max(0, math.Min(ny, maxY))))
 	return nil

@@ -165,7 +165,8 @@ final class LaptopMouseLink {
 	private var token = ""
 	private var enterSeq: UInt32 = 0
 	private var ackedSeq: UInt32 = 0
-	var onReturn: ((Float) -> Void)?
+	// along the shared edge, and the buttons (bit b-1 for button b) still held on the laptop mid-drag
+	var onReturn: ((Float, UInt8) -> Void)?
 
 	var isConfigured: Bool {
 		let h = SettingsHandler.laptopHost.trimmingCharacters(in: .whitespaces)
@@ -275,7 +276,7 @@ final class LaptopMouseLink {
 		case 0x81 where payload.count >= 4:
 			ackedSeq = u32(0)
 		case 0x82 where payload.count >= 4:
-			onReturn?(Float(bitPattern: u32(0)))
+			onReturn?(Float(bitPattern: u32(0)), payload.count >= 5 ? payload[4] : 0)
 		default:
 			break
 		}
@@ -367,6 +368,9 @@ class ParsecSDKBridge: ParsecService {
 	// the handoff goes to LaptopMouse on a laptop instead of the host, while one is set up
 	private let laptop = LaptopMouseLink()
 	private var awayViaLaptop = false
+	// buttons pressed on the laptop that came back still held, so a drag started there carries on
+	// here; their release goes to the laptop, where they were pressed
+	private var laptopHeld = Set<UInt32>()
 	private var hostPerClient: CGFloat { clientWidth > 0 && hostWidth > 0 ? CGFloat(hostWidth / clientWidth) : 1 }
 	var didSetResolution = false
 	private var didReleaseOnConnect = false
@@ -394,9 +398,10 @@ class ParsecSDKBridge: ParsecService {
 
 		self._audioPtr = UnsafeRawPointer(_audio)
 
-		laptop.onReturn = { [weak self] along in
+		laptop.onReturn = { [weak self] along, held in
 			guard let self = self, self.cursorAway, self.awayViaLaptop else { return }
-			self.returnFromAway(reason: "laptop", along: CGFloat(along))
+			self.laptopHeld = Set((1...8).filter { held & (1 << ($0 - 1)) != 0 }.map { UInt32($0) })
+			self.returnFromAway(reason: self.laptopHeld.isEmpty ? "laptop" : "laptop, dragging", along: CGFloat(along))
 		}
 
 		do {
@@ -457,6 +462,10 @@ class ParsecSDKBridge: ParsecService {
 
 		pollGeneration += 1
 		endStream1Probe(reason: "disconnect")
+		for button in laptopHeld {
+			laptop.button(button, false)
+		}
+		laptopHeld.removeAll()
 		// must go before the disconnect, after it the release never reaches the host
 		sendReleaseMessage()
 		ParsecClientDisconnect(_parsec)
@@ -772,15 +781,12 @@ class ParsecSDKBridge: ParsecService {
 		sendMousePosition(x, y)
 
 		// Send the mouse button state
-		var buttonMessage = ParsecMessage()
-		buttonMessage.type = MESSAGE_MOUSE_BUTTON
-		buttonMessage.mouseButton.button = button
-		buttonMessage.mouseButton.pressed = pressed
-		ParsecClientSendMessage(_parsec, &buttonMessage)
+		sendMouseClickMessage(button, pressed)
 	}
 
 	func sendMouseClickMessage(_ button: ParsecMouseButton, _ pressed: Bool) {
-		if cursorAway && awayViaLaptop {
+		if cursorAway && awayViaLaptop || !pressed && laptopHeld.contains(button.rawValue) {
+			laptopHeld.remove(button.rawValue)
 			laptop.button(button.rawValue, pressed)
 			return
 		}

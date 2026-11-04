@@ -14,14 +14,16 @@ import (
 //
 //	typeEnter  side u8, along f32, seq u32  cursor arrives through this edge of the laptop screen, along 0..1
 //	typeMove   dx i16, dy i16               points, already scaled by the iPad's mouse sensitivity
-//	typeButton button u8, pressed u8        Parsec numbering: 1 left, 2 middle, 3 right, 4 X1, 5 X2
+//	typeButton button u8, pressed u8        Parsec numbering: 1 left, 2 middle, 3 right, 4 X1, 5 X2;
+//	                                        a release also counts after the cursor left, for buttons still held
 //	typeWheel  dx i16, dy i16               Parsec wheel units, negative y scrolls up
 //	typeLeave                               the iPad took the cursor back
 //
 // laptop to iPad:
 //
 //	typeAck    seq u32                      answer to an enter
-//	typeReturn along f32                    the cursor left through the edge it came in by
+//	typeReturn along f32, held u8           the cursor left through the edge it came in by, with these
+//	                                        buttons (bit b-1 for button b) still held here mid-drag
 const (
 	typeEnter  = 1
 	typeMove   = 2

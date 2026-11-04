@@ -59,14 +59,24 @@ func TestEnterMoveReturn(t *testing.T) {
 	if err != nil || got.kind != typeReturn {
 		t.Fatalf("leaving reply = %v %v", got, err)
 	}
-	if along := f32(got.payload, 0); along < 0.46 || along > 0.47 {
-		t.Fatalf("returned along %v", along)
+	if along := f32(got.payload, 0); along < 0.46 || along > 0.47 || got.payload[4] != 1 {
+		t.Fatalf("returned along %v held %v", along, got.payload[4:])
 	}
-	if s.active || len(m.buttons) != 2 || m.buttons[1] != "up" {
+	// the drag goes on from the iPad, so the button stays down until the iPad lets go
+	if s.active || len(m.buttons) != 1 {
 		t.Fatalf("after return active=%v buttons=%v", s.active, m.buttons)
 	}
 	if r := s.handle(move(10, 10), "tok"); r != nil || m.x != 100 {
 		t.Fatalf("moved while inactive")
+	}
+	s.handle(packet{kind: typeButton, payload: []byte{3, 1}}, "tok")
+	s.handle(packet{kind: typeButton, payload: []byte{1, 0}}, "tok")
+	if len(m.buttons) != 2 || m.buttons[1] != "up" {
+		t.Fatalf("after the iPad let go buttons=%v", m.buttons)
+	}
+	s.handle(packet{kind: typeButton, payload: []byte{1, 0}}, "tok")
+	if len(m.buttons) != 2 {
+		t.Fatalf("released twice: %v", m.buttons)
 	}
 }
 
