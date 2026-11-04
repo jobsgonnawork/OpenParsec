@@ -29,6 +29,8 @@ type session struct {
 	side     byte
 	// sub-pixel remainder, the iPad sends whole points
 	rx, ry float64
+	// same for the wheel, when -wheel scales it down
+	wx, wy float64
 	// buttons held on this side, released if the cursor leaves
 	held map[byte]bool
 }
@@ -75,7 +77,11 @@ func (s *session) handle(p packet, token string) []byte {
 		if !s.active || len(p.payload) < 4 {
 			return nil
 		}
-		s.m.wheel(int(float64(i16(p.payload, 0))*s.wheelMul), int(float64(i16(p.payload, 2))*s.wheelMul))
+		s.wx += float64(i16(p.payload, 0)) * s.wheelMul
+		s.wy += float64(i16(p.payload, 2)) * s.wheelMul
+		dx, dy := math.Trunc(s.wx), math.Trunc(s.wy)
+		s.wx, s.wy = s.wx-dx, s.wy-dy
+		s.m.wheel(int(dx), int(dy))
 	case typeLeave:
 		if s.active {
 			s.release()
@@ -146,7 +152,7 @@ func main() {
 	port := flag.Int("port", 26510, "UDP port to listen on")
 	token := flag.String("token", "", "shared token, the same as in OpenParsec's settings (required)")
 	speed := flag.Float64("speed", 1.0, "multiplier for the iPad's moves")
-	wheelMul := flag.Float64("wheel", 20, "multiplier from Parsec wheel units to Windows wheel units (120 per notch)")
+	wheelMul := flag.Float64("wheel", 1, "multiplier for the iPad's wheel, which already sends Windows units (120 per notch)")
 	flag.Parse()
 	if *token == "" || len(*token) > 255 {
 		log.Fatal("-token is required, at most 255 characters")

@@ -33,7 +33,7 @@ With LaptopMouse running, the iPad sends its mouse to the laptop instead, from t
 
 - `-port 26510`: UDP port.
 - `-speed 1.0`: multiplies the iPad's moves, if the cursor feels too slow or too fast on the laptop.
-- `-wheel 20`: converts Parsec wheel units to Windows ones (120 per notch).
+- `-wheel 1`: multiplies the iPad's scroll, which already comes in Windows units (120 per notch). Lower it, e.g. `-wheel 0.5`, if scrolling feels too fast.
 
 ## Notes
 
