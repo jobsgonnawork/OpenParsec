@@ -39,7 +39,8 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 	private let inFlight = DispatchSemaphore(value: 3)
 	private var planes: [(y: MTLTexture, c: MTLTexture)?] = [nil, nil, nil]
 	private var current = -1
-	private var frameSize = CGSize.zero
+	private(set) var frameSize = CGSize.zero
+	let stream: UInt8
 	let updateImage: () -> Void
 
 	var device: MTLDevice { queue.device }
@@ -50,8 +51,10 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 	private var lastRateSample = CACurrentMediaTime()
 	private var lastDrawAt: CFTimeInterval = 0
 	private var drawIntervals: [CFTimeInterval] = []
+	private var uploadedFrames = 0
+	private var rateSamples = 0
 
-	init?(_ device: MTLDevice, _ updateImage: @escaping () -> Void) {
+	init?(_ device: MTLDevice, stream: UInt8 = UInt8(DEFAULT_STREAM), _ updateImage: @escaping () -> Void) {
 		guard let queue = device.makeCommandQueue() else { return nil }
 		let pipeline: MTLRenderPipelineState
 		do {
@@ -72,6 +75,7 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 		self.queue = queue
 		self.pipeline = pipeline
 		self.sampler = sampler
+		self.stream = stream
 		self.updateImage = updateImage
 		super.init()
 	}
@@ -79,6 +83,10 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 	func reset() {
 		planes = [nil, nil, nil]
 		current = -1
+		if stream != UInt8(DEFAULT_STREAM) {
+			// stream 1 can be turned off and on again, send its dimensions again with the next frame
+			lastWidth = 1.0
+		}
 		lastDrawAt = 0
 		drawIntervals.removeAll()
 	}
@@ -95,7 +103,8 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 		p.c.replace(region: MTLRegionMake2D(0, 0, (w + 1) / 2, (h + 1) / 2), mipmapLevel: 0, withBytes: image + stride * rows, bytesPerRow: stride)
 		current = slot
 		frameSize = CGSize(width: w, height: h)
-		if #available(iOS 15.0, *) {
+		uploadedFrames += 1
+		if stream == UInt8(DEFAULT_STREAM), #available(iOS 15.0, *) {
 			PictureInPictureManager.shared.feedFrame(f, image)
 		}
 	}
@@ -112,7 +121,12 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 	func draw(in view: MTKView) {
 		let deltaWidth: CGFloat = view.frame.size.width - lastWidth
 		if deltaWidth > 0.1 || deltaWidth < -0.1 || abs(view.contentScaleFactor - lastScale) > 0.01 {
-			CParsec.setFrame(view.frame.size.width, view.frame.size.height, view.contentScaleFactor)
+			if stream == UInt8(DEFAULT_STREAM) {
+				CParsec.setFrame(view.frame.size.width, view.frame.size.height, view.contentScaleFactor)
+			} else {
+				CParsec.setStreamDimensions(stream: stream, view.frame.size.width, view.frame.size.height, view.contentScaleFactor)
+				appNote("[stream\(stream)] dimensions \(Int(view.frame.size.width))x\(Int(view.frame.size.height))@\(view.contentScaleFactor)")
+			}
 			lastWidth = view.frame.size.width
 			lastScale = view.contentScaleFactor
 		}
@@ -133,10 +147,11 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 		if drawIntervals.count == 32, let tick = drawIntervals.min(), tick > 0 {
 			fps = max(Int((1 / tick).rounded()), 30)
 		}
-		let timeout = UInt32(max(1000 / fps, 8))
+		// both renderers poll on the main thread, so only stream 0 may wait for its frame
+		let timeout = stream == UInt8(DEFAULT_STREAM) ? UInt32(max(1000 / fps, 8)) : 1
 
 		inFlight.wait()
-		CParsec.pollFrame(timeout: timeout, callback: frameCallback, opaque: Unmanaged.passUnretained(self).toOpaque())
+		CParsec.pollFrame(stream: stream, timeout: timeout, callback: frameCallback, opaque: Unmanaged.passUnretained(self).toOpaque())
 
 		guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
 			  let cb = queue.makeCommandBuffer(), let enc = cb.makeRenderCommandEncoder(descriptor: pass) else {
@@ -165,9 +180,15 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 		let now = CACurrentMediaTime()
 		let elapsed = now - lastRateSample
 		if elapsed >= 1 {
-			if elapsed <= 2 {
-				CParsec.drawRate = Double(drawnFrames) / elapsed
+			if stream == UInt8(DEFAULT_STREAM) {
+				if elapsed <= 2 {
+					CParsec.drawRate = Double(drawnFrames) / elapsed
+				}
+			} else if rateSamples % 5 == 0 {
+				appNote(String(format: "[stream%d] %.1f new frames/s, %.0fx%.0f, drawable %.0fx%.0f, %@", Int(stream), Double(uploadedFrames) / elapsed, frameSize.width, frameSize.height, view.drawableSize.width, view.drawableSize.height, CParsec.stream1Metrics()))
 			}
+			rateSamples += 1
+			uploadedFrames = 0
 			drawnFrames = 0
 			lastRateSample = now
 		}

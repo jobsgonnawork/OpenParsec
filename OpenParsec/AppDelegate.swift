@@ -15,7 +15,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 	func application(_ application: UIApplication, configurationForConnecting connectingSceneSession: UISceneSession, options: UIScene.ConnectionOptions) -> UISceneConfiguration {
 		// Called when a new scene session is being created.
 		// Use this method to select a configuration to create the new scene with.
-		return UISceneConfiguration(name: "Default Configuration", sessionRole: connectingSceneSession.role)
+		let role = connectingSceneSession.role
+		appNote("[external] scene requested, role \(role.rawValue)")
+		// covers both the iOS 16 non interactive role and the older one
+		if role.rawValue.hasPrefix("UIWindowSceneSessionRoleExternalDisplay") {
+			return UISceneConfiguration(name: "External Display", sessionRole: role)
+		}
+		return UISceneConfiguration(name: "Default Configuration", sessionRole: role)
 	}
 
 	func application(_ application: UIApplication, didDiscardSceneSessions sceneSessions: Set<UISceneSession>) {

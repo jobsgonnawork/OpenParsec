@@ -1,5 +1,7 @@
 import UIKit
 import SwiftUI
+import MetalKit
+import ParsecSDK
 
 class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 	var window: UIWindow?
@@ -100,5 +102,152 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 			appNote("[background] picture in picture \(pipAttempted ? "starting" : "off"), stream \(pipAttempted ? "running" : "paused")")
 		}
 		ParsecBackgroundManager.shared.sceneDidEnterBackground()
+	}
+}
+
+// the system connects this scene when a monitor is attached and the app is in front; it draws video stream 1 there
+class ExternalDisplaySceneDelegate: UIResponder, UIWindowSceneDelegate {
+	var window: UIWindow?
+
+	func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+		guard let windowScene = scene as? UIWindowScene else { return }
+		let screen = windowScene.screen
+		appNote("[external] scene connected \(Int(screen.bounds.width))x\(Int(screen.bounds.height))@\(screen.scale), native \(Int(screen.nativeBounds.width))x\(Int(screen.nativeBounds.height))@\(screen.nativeScale), max \(screen.maximumFramesPerSecond) fps")
+		let window = UIWindow(windowScene: windowScene)
+		window.rootViewController = ExternalStreamViewController()
+		window.isHidden = false
+		self.window = window
+	}
+
+	func sceneDidDisconnect(_ scene: UIScene) {
+		appNote("[external] scene disconnected")
+		(window?.rootViewController as? ExternalStreamViewController)?.shutDown()
+		window = nil
+	}
+}
+
+class ExternalStreamViewController: UIViewController {
+	private var metalView: MTKView?
+	private var renderer: ParsecMetalRenderer?
+	private let waitingLabel = UILabel()
+	private let cursorView = UIImageView()
+	private var cursorImage: CGImage?
+	private var watchTimer: Timer?
+	// stream 1 is started once per connection; picking Off in the menu keeps it off until the next one
+	private var autoStarted = false
+
+	override func viewDidLoad() {
+		super.viewDidLoad()
+		view.backgroundColor = .black
+
+		if let device = MTLCreateSystemDefaultDevice(), let renderer = ParsecMetalRenderer(device, stream: 1, { [weak self] in self?.updateCursor() }) {
+			let mtk = MTKView(frame: view.bounds, device: device)
+			mtk.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+			mtk.colorPixelFormat = .bgra8Unorm
+			mtk.clearColor = MTLClearColor(red: 0, green: 0, blue: 0, alpha: 1)
+			mtk.autoResizeDrawable = false
+			mtk.isPaused = true
+			mtk.delegate = renderer
+			view.addSubview(mtk)
+			metalView = mtk
+			self.renderer = renderer
+		} else {
+			appNote("[external] no metal renderer, nothing will be drawn")
+		}
+
+		cursorView.isHidden = true
+		view.addSubview(cursorView)
+
+		waitingLabel.text = "OpenParsec: waiting for the 2nd screen"
+		waitingLabel.textColor = UIColor.white.withAlphaComponent(0.5)
+		waitingLabel.font = .systemFont(ofSize: 20, weight: .medium)
+		waitingLabel.translatesAutoresizingMaskIntoConstraints = false
+		view.addSubview(waitingLabel)
+		NSLayoutConstraint.activate([
+			waitingLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+			waitingLabel.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+		])
+
+		CParsec.stream1Drawn = true
+		watchTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+			self?.watch()
+		}
+		watch()
+	}
+
+	override func viewDidAppear(_ animated: Bool) {
+		super.viewDidAppear(animated)
+		var size = view.bounds.size
+		if let screen = view.window?.windowScene?.screen {
+			metalView?.preferredFramesPerSecond = screen.maximumFramesPerSecond
+			// draw in the monitor's own pixels, at the UI scale the frame is upscaled and the system shrinks it again
+			metalView?.contentScaleFactor = screen.nativeScale
+			let native = screen.nativeBounds.size
+			// past 1440p the encode costs more than the ping can carry, stay at the point size there
+			if native.width > 0 && native.width <= 2560 {
+				size = native
+			}
+		}
+		// ask the host for the monitor's size on video[1]
+		DataManager.model.stream1ResolutionX = Int(size.width)
+		DataManager.model.stream1ResolutionY = Int(size.height)
+		appNote("[external] asking for \(Int(size.width))x\(Int(size.height)) on stream 1, drawing at scale \(metalView?.contentScaleFactor ?? 0)")
+		if DataManager.model.stream1Output != nil {
+			CParsec.updateHostVideoConfig()
+		}
+	}
+
+	private func watch() {
+		let model = DataManager.model
+		guard CParsec.parsecImpl != nil, CParsec.getStatus() == PARSEC_OK else {
+			autoStarted = false
+			show(streaming: false)
+			return
+		}
+		if !autoStarted && model.stream1Output == nil && model.displayConfigs.count > 1 {
+			autoStarted = true
+			let other = model.displayConfigs.first { model.output != "none" && $0.id != model.output } ?? model.displayConfigs[1]
+			appNote("[external] starting stream 1 on \(other.name) \(other.id)")
+			CParsec.startStream1(output: other.id)
+		}
+		show(streaming: model.stream1Output != nil)
+	}
+
+	// runs after every stream 1 draw, the cursor is drawn here while the host has it on this screen
+	private func updateCursor() {
+		let info = CParsec.mouseInfo
+		guard info.stream == 1, !info.cursorHidden, let img = info.cursorImg, let frame = renderer?.frameSize, frame.width > 0, frame.height > 0 else {
+			cursorView.isHidden = true
+			return
+		}
+		if img !== cursorImage {
+			cursorView.image = UIImage(cgImage: img)
+			cursorImage = img
+		}
+		// host pixels to points on this screen; Cursor Scale's default 0.5 means actual size
+		let fit = min(view.bounds.width / frame.width, view.bounds.height / frame.height)
+		let cs = fit * CGFloat(SettingsHandler.cursorScale) * 2
+		cursorView.frame = CGRect(x: CGFloat(info.mouseX) - CGFloat(info.cursorHotX) * cs, y: CGFloat(info.mouseY) - CGFloat(info.cursorHotY) * cs,
+								  width: CGFloat(info.cursorWidth) * cs, height: CGFloat(info.cursorHeight) * cs)
+		cursorView.isHidden = false
+	}
+
+	private func show(streaming: Bool) {
+		guard metalView?.isPaused != !streaming else { return }
+		metalView?.isPaused = !streaming
+		waitingLabel.isHidden = streaming
+		cursorView.isHidden = true
+		if !streaming {
+			renderer?.reset()
+		}
+	}
+
+	func shutDown() {
+		watchTimer?.invalidate()
+		watchTimer = nil
+		metalView?.isPaused = true
+		CParsec.stream1Drawn = false
+		// a monitor nobody is looking at shouldn't keep eating bandwidth
+		CParsec.stopStream1()
 	}
 }

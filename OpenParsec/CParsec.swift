@@ -128,6 +128,8 @@ struct MouseInfo {
 	var cursorImg: CGImage?
 	var cursorHidden = false
 	var mousePositionRelative = false
+	// video stream the cursor is on, mouseX/mouseY are in that stream's client space
+	var stream: UInt8 = 0
 }
 
 protocol ParsecService {
@@ -136,6 +138,7 @@ protocol ParsecService {
 	var hostWidth: Float { get }
 	var hostHeight: Float { get }
 	var mouseInfo: MouseInfo { get }
+	var stream1Drawn: Bool { get set }
 
 	func connect(_ peerID: String) -> ParsecStatus
 	func disconnect()
@@ -144,7 +147,8 @@ protocol ParsecService {
 	func setFrame(_ width: CGFloat, _ height: CGFloat, _ scale: CGFloat)
 	func renderGLFrame(timeout: UInt32)
 	func glDestroy()
-	func pollFrame(timeout: UInt32, callback: ParsecFrameCallback, opaque: UnsafeRawPointer) -> ParsecStatus
+	func pollFrame(stream: UInt8, timeout: UInt32, callback: ParsecFrameCallback, opaque: UnsafeRawPointer) -> ParsecStatus
+	func setStreamDimensions(stream: UInt8, _ width: CGFloat, _ height: CGFloat, _ scale: CGFloat)
 	func setMuted(_ muted: Bool)
 	func applyConfig()
 	func sendMouseMessage(_ button: ParsecMouseButton, _ x: Int32, _ y: Int32, _ pressed: Bool)
@@ -165,6 +169,9 @@ protocol ParsecService {
 	func pause(video: Bool, audio: Bool) -> ParsecStatus
 	func resume() -> ParsecStatus
 	func updateHostVideoConfig()
+	func startStream1(output: String)
+	func stream1Metrics() -> String
+	func stopStream1()
 }
 
 class CParsec {
@@ -230,8 +237,22 @@ class CParsec {
 	}
 
 	@discardableResult
-	static func pollFrame(timeout: UInt32, callback: ParsecFrameCallback, opaque: UnsafeRawPointer) -> ParsecStatus {
-		parsecImpl.pollFrame(timeout: timeout, callback: callback, opaque: opaque)
+	static func pollFrame(stream: UInt8 = UInt8(DEFAULT_STREAM), timeout: UInt32, callback: ParsecFrameCallback, opaque: UnsafeRawPointer) -> ParsecStatus {
+		parsecImpl.pollFrame(stream: stream, timeout: timeout, callback: callback, opaque: opaque)
+	}
+
+	static func setStreamDimensions(stream: UInt8, _ width: CGFloat, _ height: CGFloat, _ scale: CGFloat) {
+		parsecImpl.setStreamDimensions(stream: stream, width, height, scale)
+	}
+
+	static var stream1Drawn: Bool {
+		get { parsecImpl.stream1Drawn }
+		set { parsecImpl.stream1Drawn = newValue }
+	}
+
+	// main thread: stream 1 is on and the external display shows it
+	static var stream1Shown: Bool {
+		DataManager.model.stream1Output != nil && parsecImpl.stream1Drawn
 	}
 
 	static func setMuted(_ muted: Bool) {
@@ -244,6 +265,18 @@ class CParsec {
 
 	static func updateHostVideoConfig() {
 		parsecImpl.updateHostVideoConfig()
+	}
+
+	static func startStream1(output: String) {
+		parsecImpl.startStream1(output: output)
+	}
+
+	static func stopStream1() {
+		parsecImpl.stopStream1()
+	}
+
+	static func stream1Metrics() -> String {
+		parsecImpl.stream1Metrics()
 	}
 
 	static func sendMouseMessage(_ button: ParsecMouseButton, _ x: Int32, _ y: Int32, _ pressed: Bool) {

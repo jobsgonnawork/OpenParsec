@@ -479,6 +479,89 @@ struct ParsecView: View {
 								.frame(maxWidth: .infinity)
 								.multilineTextAlignment(.center)
 						}
+						Menu {
+							Button(action: {
+								CParsec.stopStream1()
+							}) {
+								if dataModel.stream1Output == nil {
+									Label("Off", systemImage: "checkmark")
+								} else {
+									Text("Off")
+								}
+							}
+							ForEach(DataManager.model.displayConfigs, id: \.self) { config in
+								Button(action: {
+									CParsec.startStream1(output: config.id)
+								}) {
+									if dataModel.stream1Output == config.id {
+										Label("\(config.name) \(config.adapterName)", systemImage: "checkmark")
+									} else {
+										Text("\(config.name) \(config.adapterName)")
+									}
+								}
+							}
+							Divider()
+							Button(action: {
+								SettingsHandler.stream1Elsewhere.toggle()
+							}) {
+								if settingsStore.stream1Elsewhere {
+									Label("On Another Device", systemImage: "checkmark")
+								} else {
+									Text("On Another Device")
+								}
+							}
+							Menu("Position") {
+								ForEach(SecondScreenSide.allCases, id: \.self) { side in
+									Button(action: {
+										SettingsHandler.stream1Side = side
+									}) {
+										if settingsStore.stream1Side == side {
+											Label(side.desc, systemImage: "checkmark")
+										} else {
+											Text(side.desc)
+										}
+									}
+								}
+							}
+							Menu("Bitrate") {
+								ForEach([0, 10, 20, 30, 40, 50], id: \.self) { bitrate in
+									Button(action: {
+										SettingsHandler.stream1Bitrate = bitrate
+										applyStream1Config()
+									}) {
+										let name = bitrate == 0 ? "Same as iPad" : "\(bitrate) Mbps"
+										if settingsStore.stream1Bitrate == bitrate {
+											Label(name, systemImage: "checkmark")
+										} else {
+											Text(name)
+										}
+									}
+								}
+							}
+							Menu("Frame Rate") {
+								ForEach([30, 60], id: \.self) { fps in
+									Button(action: {
+										SettingsHandler.stream1Fps = fps
+										applyStream1Config()
+									}) {
+										if settingsStore.stream1Fps == fps {
+											Label("\(fps) FPS", systemImage: "checkmark")
+										} else {
+											Text("\(fps) FPS")
+										}
+									}
+								}
+							}
+							Divider()
+							Button(action: copyProbeLog) {
+								Label("Copy Probe Log", systemImage: "doc.on.doc")
+							}
+						} label: {
+							Text("2nd Screen")
+								.padding(8)
+								.frame(maxWidth: .infinity)
+								.multilineTextAlignment(.center)
+						}
 					}
 
 					Button(action: toggleConstantFps) {
@@ -807,6 +890,20 @@ struct ParsecView: View {
 		DispatchQueue.main.async {
 			DataManager.model.output = displayId
 			CParsec.updateHostVideoConfig()
+		}
+	}
+
+	func applyStream1Config() {
+		guard DataManager.model.stream1Output != nil else { return }
+		CParsec.updateHostVideoConfig()
+	}
+
+	func copyProbeLog() {
+		let count = ConnectionLog.shared.probeLines.count
+		UIPasteboard.general.string = ConnectionLog.shared.probeReport()
+		withAnimation { hint = "Copied \(count) probe lines" }
+		DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+			withAnimation { hint = nil }
 		}
 	}
 
