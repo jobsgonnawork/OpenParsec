@@ -81,12 +81,14 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: "1.22"
+      - name: Install the Windows C compiler
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
       - name: Test and build
         working-directory: LaptopMouseWin
         run: |
           go test ./...
-          GOOS=windows GOARCH=amd64 go build -ldflags "-H=windowsgui" -o LaptopMouse.exe .
-          GOOS=windows GOARCH=arm64 go build -ldflags "-H=windowsgui" -o LaptopMouse-arm64.exe .
+          sdk/fetch.sh
+          CGO_ENABLED=1 CC=x86_64-w64-mingw32-gcc GOOS=windows GOARCH=amd64 go build -ldflags "-H=windowsgui" -o LaptopMouse.exe .
       - name: Upload a Build Artifact
         uses: actions/upload-artifact@v4
         with:

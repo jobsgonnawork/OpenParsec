@@ -8,7 +8,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 
 	"fyne.io/systray"
 	"golang.org/x/sys/windows"
@@ -19,6 +21,9 @@ import (
 var icon []byte
 
 const runKey = `Software\Microsoft\Windows\CurrentVersion\Run`
+
+// Parsec status: the session is no longer valid
+const wsErrAuth = -3008
 
 func logPath() string { return filepath.Join(configDir(), "laptopmouse.log") }
 
@@ -32,26 +37,119 @@ func setUpLog() {
 func showMessage(text string) {
 	t, _ := windows.UTF16PtrFromString(text)
 	c, _ := windows.UTF16PtrFromString("LaptopMouse")
-	windows.MessageBox(0, t, c, windows.MB_OK|windows.MB_ICONINFORMATION)
+	windows.MessageBox(0, t, c, windows.MB_OK|windows.MB_ICONINFORMATION|windows.MB_SETFOREGROUND)
 }
 
-func runUI(opts options, addrs []string, fresh bool) {
+type app struct {
+	mu      sync.Mutex
+	opts    *options
+	mouse   *session
+	signing bool
+}
+
+func newApp(opts *options, s *session) *app {
+	a := &app{opts: opts, mouse: s}
+	// the iPad's cursor coming over opens the 2nd screen, once signed in
+	s.onIn = func() {
+		if a.signedIn() && !screen.isOpen() {
+			go a.openScreen()
+		}
+	}
+	s.onOut = screen.cursorAway
+	screen.onState = func(status int32) {
+		if status == wsErrAuth {
+			log.Printf("[screen] Parsec signed this laptop out")
+			screen.close()
+			a.mu.Lock()
+			a.opts.Session = ""
+			saveOptions(*a.opts)
+			a.mu.Unlock()
+			go showMessage("Parsec signed this laptop out. Open the 2nd screen from the tray to sign in again.")
+		}
+	}
+	return a
+}
+
+func (a *app) signedIn() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.opts.Session != "" && a.opts.Peer != ""
+}
+
+// openScreen shows the 2nd screen, signing in to Parsec first if needed
+func (a *app) openScreen() {
+	if !a.signedIn() && !a.signIn() {
+		return
+	}
+	a.mu.Lock()
+	stored, peer, display := a.opts.Session, a.opts.Peer, a.opts.Display
+	a.mu.Unlock()
+	session, err := unprotectSecret(stored)
+	if err != nil || session == "" {
+		log.Printf("[screen] stored session unreadable: %v", err)
+		if !a.signIn() {
+			return
+		}
+		a.openScreen()
+		return
+	}
+	w, h := a.mouse.m.screen()
+	screen.open(session, peer, display, w, h)
+}
+
+func (a *app) signIn() bool {
+	a.mu.Lock()
+	if a.signing {
+		a.mu.Unlock()
+		return false
+	}
+	a.signing = true
+	opts := *a.opts
+	a.mu.Unlock()
+
+	ok := signInToParsec(&opts)
+
+	a.mu.Lock()
+	a.signing = false
+	if ok {
+		*a.opts = opts
+	}
+	a.mu.Unlock()
+	return ok
+}
+
+func (a *app) openRequested() { go a.openScreen() }
+
+func (a *app) run(addrs []string, fresh bool) {
+	opts := a.opts
 	if fresh {
 		// first run: start with Windows from now on, and say what to type on the iPad
 		setStartWithWindows(true)
 		go showMessage(fmt.Sprintf("LaptopMouse is running next to the clock and starts with Windows.\n\n"+
 			"In OpenParsec, Settings → 2nd Screen on a Laptop:\n\nAddress: %s\nPort: %d\nToken: %s",
 			firstOr(addrs, "this laptop's address"), opts.Port, opts.Token))
+	} else if startsWithWindows() {
+		// keep the entry pointing at this copy, started in the tray
+		setStartWithWindows(true)
+	}
+	if !opts.Autostart {
+		go a.openScreen()
 	}
 
 	systray.Run(func() {
 		systray.SetIcon(icon)
-		systray.SetTooltip("LaptopMouse, port " + fmt.Sprint(opts.Port))
+		systray.SetTooltip("LaptopMouse")
 
+		state := systray.AddMenuItem("2nd screen: off", "")
+		state.Disable()
+		open := systray.AddMenuItem("Open 2nd screen", "")
+		closeScreen := systray.AddMenuItem("Close 2nd screen", "")
+		account := systray.AddMenuItem("Sign in or change computer…", "")
+		systray.AddSeparator()
 		info := systray.AddMenuItem(fmt.Sprintf("Listening on port %d", opts.Port), "")
 		info.Disable()
-		for _, a := range addrs {
-			item := systray.AddMenuItem("Address "+a, "")
+		for _, addr := range addrs {
+			item := systray.AddMenuItem("Address "+addr, "")
 			item.Disable()
 		}
 		token := systray.AddMenuItem("Token "+opts.Token+" (click to copy)", "")
@@ -62,8 +160,35 @@ func runUI(opts options, addrs []string, fresh bool) {
 		quit := systray.AddMenuItem("Quit", "")
 
 		go func() {
+			for range time.Tick(time.Second) {
+				a.mu.Lock()
+				name := a.opts.PeerName
+				a.mu.Unlock()
+				switch screenState() {
+				case 0:
+					state.SetTitle("2nd screen: off")
+				case 1:
+					state.SetTitle("2nd screen: connecting to " + name)
+				default:
+					state.SetTitle("2nd screen: showing " + name)
+				}
+			}
+		}()
+
+		go func() {
 			for {
 				select {
+				case <-open.ClickedCh:
+					go a.openScreen()
+				case <-closeScreen.ClickedCh:
+					screen.close()
+				case <-account.ClickedCh:
+					go func() {
+						screen.close()
+						if a.signIn() {
+							a.openScreen()
+						}
+					}()
 				case <-token.ClickedCh:
 					run("clip", opts.Token)
 				case <-autostart.ClickedCh:
@@ -79,11 +204,22 @@ func runUI(opts options, addrs []string, fresh bool) {
 				case <-openSettings.ClickedCh:
 					run("notepad", "", configPath())
 				case <-quit.ClickedCh:
+					screen.close()
 					systray.Quit()
 				}
 			}
 		}()
 	}, nil)
+}
+
+func screenState() int {
+	if !screen.isOpen() {
+		return 0
+	}
+	if screen.isShowing() {
+		return 2
+	}
+	return 1
 }
 
 func firstOr(list []string, fallback string) string {
@@ -134,5 +270,5 @@ func setStartWithWindows(on bool) {
 		log.Printf("start with Windows: %v", err)
 		return
 	}
-	k.SetStringValue("LaptopMouse", `"`+exe+`"`)
+	k.SetStringValue("LaptopMouse", `"`+exe+`" -autostart`)
 }

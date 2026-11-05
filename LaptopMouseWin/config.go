@@ -14,6 +14,16 @@ type options struct {
 	Port  int     `json:"port"`
 	Speed float64 `json:"speed"`
 	Wheel float64 `json:"wheel"`
+
+	// the 2nd screen: the Parsec session (encrypted for this Windows user), the host, and the
+	// host display to show, "" for the first one the iPad isn't on
+	Session  string `json:"session,omitempty"`
+	Peer     string `json:"peer,omitempty"`
+	PeerName string `json:"peerName,omitempty"`
+	Display  string `json:"display,omitempty"`
+
+	// started by Windows at sign in, so stay in the tray instead of opening the 2nd screen
+	Autostart bool `json:"-"`
 }
 
 func configDir() string {
@@ -39,6 +49,7 @@ func loadOptions(args []string) (o options, fresh bool, err error) {
 	port := fs.Int("port", 0, "UDP port to listen on (default 26510)")
 	speed := fs.Float64("speed", 0, "multiplier for the iPad's moves (default 1)")
 	wheel := fs.Float64("wheel", 0, "multiplier for the iPad's wheel, which already sends Windows units (default 1)")
+	autostart := fs.Bool("autostart", false, "started with Windows")
 	if err = fs.Parse(args); err != nil {
 		return
 	}
@@ -54,6 +65,7 @@ func loadOptions(args []string) (o options, fresh bool, err error) {
 	if *wheel != 0 {
 		o.Wheel = *wheel
 	}
+	o.Autostart = *autostart
 	if len(o.Token) > 255 {
 		o.Token = o.Token[:255]
 	}
@@ -62,11 +74,16 @@ func loadOptions(args []string) (o options, fresh bool, err error) {
 		fresh = true
 	}
 
-	if err = os.MkdirAll(configDir(), 0o700); err == nil {
-		data, _ := json.MarshalIndent(o, "", "  ")
-		err = os.WriteFile(configPath(), data, 0o600)
-	}
+	err = saveOptions(o)
 	return
+}
+
+func saveOptions(o options) error {
+	if err := os.MkdirAll(configDir(), 0o700); err != nil {
+		return err
+	}
+	data, _ := json.MarshalIndent(o, "", "  ")
+	return os.WriteFile(configPath(), data, 0o600)
 }
 
 // short and easy to type on the iPad, without look-alike characters

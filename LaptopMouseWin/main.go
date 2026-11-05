@@ -31,6 +31,8 @@ type session struct {
 	rx, ry float64
 	// same for the wheel, when -wheel scales it down
 	wx, wy float64
+	// called as the iPad's cursor comes in and goes back, from the receive loop
+	onIn, onOut func()
 	// buttons pressed on this side; still held after the cursor leaves mid-drag, until the iPad
 	// lets go, so a window dragged from here can be dropped on the iPad's screen
 	held map[byte]bool
@@ -61,6 +63,9 @@ func (s *session) handle(p packet, token string) []byte {
 		s.active, s.rx, s.ry = true, 0, 0
 		s.m.moveTo(int(x), int(y))
 		log.Printf("cursor in through the %s edge at %.2f", sideName(s.side), along)
+		if s.onIn != nil {
+			s.onIn()
+		}
 		return build(typeAck, token, putU32(seq))
 	case typeMove:
 		if !s.active || len(p.payload) < 4 {
@@ -91,6 +96,9 @@ func (s *session) handle(p packet, token string) []byte {
 			s.release()
 			s.active = false
 			log.Printf("the iPad took the cursor back")
+			if s.onOut != nil {
+				s.onOut()
+			}
 		}
 	}
 	return nil
@@ -127,6 +135,9 @@ func (s *session) move(dx, dy float64, token string) []byte {
 			}
 		}
 		log.Printf("cursor out through the %s edge at %.2f, back to the iPad, buttons held %08b", sideName(s.side), clamp01(along), mask)
+		if s.onOut != nil {
+			s.onOut()
+		}
 		return build(typeReturn, token, append(putF32(float32(clamp01(along))), mask))
 	}
 	s.m.moveTo(int(math.Max(0, math.Min(nx, maxX))), int(math.Max(0, math.Min(ny, maxY))))
@@ -166,17 +177,32 @@ func main() {
 
 	conn, err := net.ListenUDP("udp", &net.UDPAddr{Port: opts.Port})
 	if err != nil {
-		fail("LaptopMouse is probably already running (look for it next to the clock).\n\nUDP port %d: %v", opts.Port, err)
+		// already running: ask that one to open the 2nd screen, as a double click means
+		if askRunningToOpen(opts) {
+			os.Exit(0)
+		}
+		fail("LaptopMouse can't listen on UDP port %d: %v", opts.Port, err)
 	}
 	addrs := localAddresses()
 	log.Printf("listening on UDP %d, addresses %v, settings in %s", opts.Port, addrs, configPath())
 
-	go serve(conn, opts)
-	runUI(opts, addrs, fresh)
+	s := &session{m: newMouse(), speed: opts.Speed, wheelMul: opts.Wheel, held: map[byte]bool{}}
+	app := newApp(&opts, s)
+	go serve(conn, opts, s, app.openRequested)
+	app.run(addrs, fresh)
 }
 
-func serve(conn *net.UDPConn, opts options) {
-	s := &session{m: newMouse(), speed: opts.Speed, wheelMul: opts.Wheel, held: map[byte]bool{}}
+func askRunningToOpen(opts options) bool {
+	c, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: opts.Port})
+	if err != nil {
+		return false
+	}
+	defer c.Close()
+	_, err = c.Write(build(typeOpen, opts.Token, nil))
+	return err == nil
+}
+
+func serve(conn *net.UDPConn, opts options, s *session, open func()) {
 	buf := make([]byte, 2048)
 	lastBad := time.Time{}
 	for {
@@ -190,6 +216,12 @@ func serve(conn *net.UDPConn, opts options) {
 			if time.Since(lastBad) > 5*time.Second {
 				log.Printf("ignored a packet from %s: %v", from, err)
 				lastBad = time.Now()
+			}
+			continue
+		}
+		if p.kind == typeOpen {
+			if from.IP.IsLoopback() {
+				open()
 			}
 			continue
 		}

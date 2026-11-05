@@ -19,6 +19,10 @@ import (
 //	typeWheel  dx i16, dy i16               Parsec wheel units, negative y scrolls up
 //	typeLeave                               the iPad took the cursor back
 //
+// from this laptop only:
+//
+//	typeOpen                                a 2nd LaptopMouse started, show the 2nd screen
+//
 // laptop to iPad:
 //
 //	typeAck    seq u32                      answer to an enter
@@ -30,6 +34,7 @@ const (
 	typeButton = 3
 	typeWheel  = 4
 	typeLeave  = 5
+	typeOpen   = 6
 	typeAck    = 0x81
 	typeReturn = 0x82
 )
