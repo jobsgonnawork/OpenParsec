@@ -4,8 +4,8 @@
 
 #include <stdint.h>
 
-// loads parsec.dll from dllPath; returns 0, or a ParsecStatus / loader error
-int viewer_init(const char *dllPath);
+// loads parsec.dll from the folder dllDir (UTF-8); returns 0, or a ParsecStatus / loader error
+int viewer_init(const char *dllDir);
 
 // opens the window and keeps a connection to peerID open, reconnecting when it drops, until
 // viewer_close; blocks, and must run on a thread of its own

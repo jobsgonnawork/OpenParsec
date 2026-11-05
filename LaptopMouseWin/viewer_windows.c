@@ -59,14 +59,20 @@ static void parsecLog(ParsecLogLevel level, const char *msg, void *opaque)
 	vlog("sdk [%s] %s", level == LOG_DEBUG ? "D" : "I", msg);
 }
 
-int viewer_init(const char *dllPath)
+int viewer_init(const char *dllDir)
 {
 	InitializeCriticalSection(&cursorLock);
 	SetProcessDPIAware();
 
+	// the SDK's loader takes an ANSI path, which can't hold a user folder like C:\Users\João, so
+	// the folder goes in as UTF-16 and the loader only gets the file name
+	WCHAR dir[MAX_PATH];
+	if (!MultiByteToWideChar(CP_UTF8, 0, dllDir, -1, dir, MAX_PATH) || !SetDllDirectoryW(dir))
+		return SO_ERR_OPEN;
+
 	// the same signalling server the iPad uses, the SDK's built-in default is gone
 	char reserved[] = "{\"ssHost\":\"kessel-ws.parsec.app\"}";
-	ParsecStatus r = ParsecInit(NULL, reserved, (char *) dllPath, &parsec);
+	ParsecStatus r = ParsecInit(NULL, reserved, "parsec.dll", &parsec);
 	if (r != PARSEC_OK) {
 		parsec = NULL;
 		return r;

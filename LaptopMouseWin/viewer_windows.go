@@ -52,9 +52,9 @@ func (v *viewer) init() error {
 			return v.initErr
 		}
 	}
-	cPath := C.CString(path)
-	defer C.free(unsafe.Pointer(cPath))
-	if r := C.viewer_init(cPath); r != 0 {
+	cDir := C.CString(configDir())
+	defer C.free(unsafe.Pointer(cDir))
+	if r := C.viewer_init(cDir); r != 0 {
 		v.initErr = fmt.Errorf("can't load the Parsec SDK (%d)", int(r))
 		return v.initErr
 	}
