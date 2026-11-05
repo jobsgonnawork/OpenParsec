@@ -69,6 +69,34 @@ func (s *videoConfigState) handle(id uint32, msg string) (string, bool) {
 	return s.reply(time.Now())
 }
 
+// choose switches stream 1 to another host display; it returns the config to send, if known yet
+func (s *videoConfigState) choose(display string) (string, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.display, s.sent, s.lastSent = display, 0, time.Time{}
+	return s.reply(time.Now())
+}
+
+// state returns the host's displays, the one stream 1 shows and the one the iPad shows
+func (s *videoConfigState) state() (displays []hostDisplay, shown, ipad string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ipad = s.stream0()
+	if s.displays != nil {
+		shown = s.pickDisplay(ipad)
+	}
+	return append([]hostDisplay(nil), s.displays...), shown, ipad
+}
+
+func (s *videoConfigState) stream0() string {
+	video, _ := s.config["video"].([]any)
+	if len(video) == 0 {
+		return ""
+	}
+	v0, _ := video[0].(map[string]any)
+	return str(v0["output"])
+}
+
 func (s *videoConfigState) reply(now time.Time) (string, bool) {
 	if s.config == nil || s.displays == nil {
 		return "", false

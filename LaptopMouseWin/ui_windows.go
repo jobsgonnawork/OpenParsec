@@ -144,6 +144,8 @@ func (a *app) run(addrs []string, fresh bool) {
 		state.Disable()
 		open := systray.AddMenuItem("Open 2nd screen", "")
 		closeScreen := systray.AddMenuItem("Close 2nd screen", "")
+		displayMenu := systray.AddMenuItem("Display to show", "Listed once the 2nd screen connects")
+		a.watchDisplays(displayMenu)
 		account := systray.AddMenuItem("Sign in or change computer…", "")
 		systray.AddSeparator()
 		info := systray.AddMenuItem(fmt.Sprintf("Listening on port %d", opts.Port), "")
@@ -210,6 +212,59 @@ func (a *app) run(addrs []string, fresh bool) {
 			}
 		}()
 	}, nil)
+}
+
+// watchDisplays lists the host's displays under menu once known, so one can be picked for the 2nd
+// screen; the pick is saved and applied straight away
+func (a *app) watchDisplays(menu *systray.MenuItem) {
+	var mu sync.Mutex
+	items := map[string]*systray.MenuItem{}
+	screen.onDisplays = func() {
+		mu.Lock()
+		defer mu.Unlock()
+		displays, shown, ipad := screen.cfg.state()
+		names := map[string]int{}
+		for _, d := range displays {
+			names[d.Name]++
+		}
+		for _, d := range displays {
+			title := d.Name
+			if names[d.Name] > 1 || title == "" {
+				title += " (" + d.ID + ")"
+			}
+			if d.ID == ipad {
+				title += " - on the iPad"
+			}
+			item := items[d.ID]
+			if item == nil {
+				item = menu.AddSubMenuItemCheckbox(title, "", false)
+				items[d.ID] = item
+				id := d.ID
+				go func() {
+					for range item.ClickedCh {
+						a.chooseDisplay(id)
+					}
+				}()
+			} else {
+				item.SetTitle(title)
+			}
+			if d.ID == shown {
+				item.Check()
+			} else {
+				item.Uncheck()
+			}
+		}
+	}
+}
+
+func (a *app) chooseDisplay(id string) {
+	a.mu.Lock()
+	a.opts.Display = id
+	saveOptions(*a.opts)
+	a.mu.Unlock()
+	log.Printf("[screen] showing display %s", id)
+	screen.show(id)
+	screen.onDisplays()
 }
 
 func screenState() int {

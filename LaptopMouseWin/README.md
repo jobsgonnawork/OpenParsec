@@ -33,6 +33,7 @@ When the iPad's cursor crosses the edge, the iPad sends its mouse to the laptop 
 - **Open the 2nd screen**: double-click LaptopMouse, choose **Open 2nd screen** in the tray menu, or just move the iPad's cursor over.
 - **Leave full screen**: Shift+Esc minimises it; **Close 2nd screen** in the tray disconnects.
 - **Another account or computer**: **Sign in or change computer…** in the tray.
+- **Which host display**: **Display to show** in the tray lists the host's displays once connected, marking the iPad's. The pick is saved; until then it shows the first one the iPad isn't on.
 
 ## Settings
 
@@ -42,7 +43,7 @@ They are saved in `%APPDATA%\LaptopMouse\config.json` (**Edit settings** in the 
 - `-port 26510`: UDP port.
 - `-speed 1`: multiplies the iPad's moves, if the cursor feels too slow or too fast on the laptop.
 - `-wheel 1`: multiplies the iPad's scroll, which already comes in Windows units (120 per notch). Lower it, e.g. `0.5`, if scrolling feels too fast.
-- `display` (settings file only): the host display to show, by id, as listed in the log. Empty shows the first display the iPad isn't on.
+- `display`: the host display to show, set from **Display to show** in the tray. Empty shows the first display the iPad isn't on.
 
 The log is in `%APPDATA%\LaptopMouse\laptopmouse.log` (**Open log**).
 

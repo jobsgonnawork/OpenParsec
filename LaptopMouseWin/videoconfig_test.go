@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 )
@@ -65,5 +66,22 @@ func TestStream1ConfiguredDisplay(t *testing.T) {
 	json.Unmarshal([]byte(reply), &got)
 	if got.Video[1]["output"] != "disp-3" {
 		t.Fatalf("output %v", got.Video[1]["output"])
+	}
+}
+
+func TestChooseDisplay(t *testing.T) {
+	s := &videoConfigState{}
+	s.reset("", 1920, 1200)
+	s.handle(userDataDisplays, `[{"name":"iPad","id":"a"},{"name":"Physical","id":"b"},{"name":"Laptop","id":"c"}]`)
+	s.handle(userDataSetVideoConfig, strings.Replace(hostConfig, "disp-1", "a", 1))
+	if _, shown, ipad := s.state(); shown != "b" || ipad != "a" {
+		t.Fatalf("shown %q ipad %q", shown, ipad)
+	}
+	reply, ok := s.choose("c")
+	if !ok || !strings.Contains(reply, `"output":"c"`) {
+		t.Fatalf("choose = %v %s", ok, reply)
+	}
+	if _, shown, _ := s.state(); shown != "c" {
+		t.Fatalf("shown %q", shown)
 	}
 }

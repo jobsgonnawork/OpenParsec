@@ -27,11 +27,12 @@ import (
 var parsecDLL []byte
 
 type viewer struct {
-	mu      sync.Mutex
-	ready   bool
-	initErr error
-	cfg     *videoConfigState
-	onState func(status int32)
+	mu         sync.Mutex
+	ready      bool
+	initErr    error
+	cfg        *videoConfigState
+	onState    func(status int32)
+	onDisplays func()
 	// from open until the window's thread ends, so two opens can't race to make two windows
 	running atomic.Bool
 }
@@ -88,7 +89,15 @@ func (v *viewer) open(session, peer, display string, width, height int) {
 	<-started
 }
 
-func (v *viewer) close()       { C.viewer_close() }
+func (v *viewer) close() { C.viewer_close() }
+
+// show switches stream 1 to another host display, live if connected
+func (v *viewer) show(display string) {
+	if reply, ok := v.cfg.choose(display); ok && v.isOpen() {
+		log.Printf("[screen] video config sent: %s", reply)
+		sendUserData(userDataSetVideoConfig, reply)
+	}
+}
 func (v *viewer) isOpen() bool { return v.running.Load() }
 
 // stream 1 has drawn a frame
@@ -111,6 +120,9 @@ func goViewerUserData(id C.uint32_t, msg *C.char) {
 	if reply, ok := screen.cfg.handle(uint32(id), C.GoString(msg)); ok {
 		log.Printf("[screen] video config sent: %s", reply)
 		sendUserData(userDataSetVideoConfig, reply)
+	}
+	if screen.onDisplays != nil && (id == userDataDisplays || id == userDataSetVideoConfig) {
+		screen.onDisplays()
 	}
 }
 
