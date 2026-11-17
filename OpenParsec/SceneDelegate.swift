@@ -70,6 +70,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 	}
 
 	func sceneWillEnterForeground(_ scene: UIScene) {
+		ParsecBackgroundManager.shared.sceneWillEnterForeground()
 	}
 
 	func sceneDidEnterBackground(_ scene: UIScene) {
@@ -96,6 +97,7 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 			CParsec.sendReleaseMessage()
 			CParsec.pause()
 			ParsecBackgroundManager.shared.isPaused = true
+			ParsecBackgroundManager.shared.holdSessionInBackground()
 		}
 
 		if ParsecBackgroundManager.shared.hasActiveConnection {

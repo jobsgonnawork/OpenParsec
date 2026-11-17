@@ -92,6 +92,11 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 	}
 
 	fileprivate func upload(_ f: ParsecFrame, _ image: UnsafeRawPointer) {
+		// the reconnect screen waits for the iPad's own picture, not the external display's
+		if stream == UInt8(DEFAULT_STREAM), let next = ParsecBackgroundManager.shared.onNextFrame {
+			ParsecBackgroundManager.shared.onNextFrame = nil
+			next()
+		}
 		let w = Int(f.width), h = Int(f.height), stride = Int(f.fullWidth), rows = Int(f.fullHeight)
 		guard f.isWholeNV12 else { return }
 		let slot = (current + 1) % planes.count
