@@ -173,6 +173,8 @@ protocol ParsecService {
 	func stream1Metrics() -> String
 	func streamMetrics(_ stream: UInt8) -> String
 	func stopStream1()
+	var lastInputAt: CFTimeInterval { get }
+	func refreshVideo()
 }
 
 class CParsec {
@@ -274,6 +276,12 @@ class CParsec {
 
 	static func stopStream1() {
 		parsecImpl.stopStream1()
+	}
+
+	static var lastInputAt: CFTimeInterval { parsecImpl.lastInputAt }
+
+	static func refreshVideo() {
+		parsecImpl.refreshVideo()
 	}
 
 	static func streamMetrics(_ stream: UInt8) -> String {

@@ -61,6 +61,7 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 	private var pollCounts: [Int32: Int] = [:]
 	private var rejectedFrames = 0
 	private var rejectedInfo = ""
+	private var refreshedAt: CFTimeInterval = 0
 
 	init?(_ device: MTLDevice, stream: UInt8 = UInt8(DEFAULT_STREAM), _ updateImage: @escaping () -> Void) {
 		guard let queue = device.makeCommandQueue() else { return nil }
@@ -99,6 +100,7 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 		drawIntervals.removeAll()
 		lastUploadAt = 0
 		freezeFrom = 0
+		refreshedAt = 0
 	}
 
 	fileprivate func upload(_ f: ParsecFrame, _ image: UnsafeRawPointer) {
@@ -153,6 +155,15 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 			freezeFrom = lastUploadAt
 			freezeLoggedAt = now
 			appNote(String(format: "[freeze] stream 0 no new frame for %.1f s, polls %@, rejected %d %@, %@", gap, pollSummary(), rejectedFrames, rejectedInfo, CParsec.streamMetrics(stream)))
+			return
+		}
+		// input sent after the last frame should have changed the picture; if 2 s on there is still
+		// none, the video is stuck, so ask the host for a new picture, at most every 5 s
+		let inputAt = CParsec.lastInputAt
+		if inputAt > lastUploadAt && now - inputAt > 2 && now - refreshedAt > 5 {
+			refreshedAt = now
+			appNote(String(format: "[freeze] stuck %.1f s after input, refreshing the video, polls %@, rejected %d, %@", now - inputAt, pollSummary(), rejectedFrames, CParsec.streamMetrics(stream)))
+			CParsec.refreshVideo()
 		} else if now - freezeLoggedAt > 10 {
 			freezeLoggedAt = now
 			appNote(String(format: "[freeze] still none after %.1f s, polls %@, rejected %d, %@", gap, pollSummary(), rejectedFrames, CParsec.streamMetrics(stream)))

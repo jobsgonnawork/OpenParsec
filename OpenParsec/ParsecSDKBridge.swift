@@ -756,7 +756,23 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func setMuted(_ muted: Bool) {
+		audioMuted = muted
 		audio_mute(muted, _audioPtr)
+	}
+
+	// when the user last scrolled, clicked or typed on the host, for the freeze watch
+	private(set) var lastInputAt: CFTimeInterval = 0
+	private var audioMuted = false
+
+	// pause and resume the video so the host sends a whole new picture; for a stream 0 that stopped
+	// getting frames after loss and doesn't recover on its own
+	func refreshVideo() {
+		let paused = ParsecClientPause(_parsec, true, audioMuted)
+		DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+			guard let self = self else { return }
+			let resumed = ParsecClientPause(self._parsec, false, self.audioMuted)
+			appNote("[freeze] video refreshed, pause \(paused.rawValue) resume \(resumed.rawValue)")
+		}
 	}
 
 	func applyConfig() {
@@ -790,6 +806,7 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func sendMouseClickMessage(_ button: ParsecMouseButton, _ pressed: Bool) {
+		lastInputAt = CACurrentMediaTime()
 		if pressed {
 			buttonsDown.insert(button.rawValue)
 		} else {
@@ -1045,6 +1062,7 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func sendVirtualKeyboardInput(text: String) {
+		lastInputAt = CACurrentMediaTime()
 		let (keyCode, useShift) = getKeyCodeByText(text: text)
 
 		guard let keyCode else {
@@ -1074,6 +1092,7 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func sendVirtualKeyboardInput(text: String, isOn: Bool) {
+		lastInputAt = CACurrentMediaTime()
 		let (keyCode, _) = getKeyCodeByText(text: text)
 
 		guard let keyCode else {
@@ -1093,6 +1112,7 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func sendKeyboardMessage(event: KeyBoardKeyEvent) {
+		lastInputAt = CACurrentMediaTime()
 		if event.input == nil {
 			return
 		}
@@ -1108,6 +1128,7 @@ class ParsecSDKBridge: ParsecService {
 
 	func sendKeyboardMessage(keyCode: UInt32, pressed: Bool)
 	{
+		lastInputAt = CACurrentMediaTime()
 		var keyboardMessagePress = ParsecMessage()
 		keyboardMessagePress.type = MESSAGE_KEYBOARD
 		keyboardMessagePress.keyboard.code = ParsecKeycode(keyCode)
@@ -1153,6 +1174,7 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func sendWheelMsg(x: Int32, y: Int32) {
+		lastInputAt = CACurrentMediaTime()
 		if cursorAway && awayViaLaptop {
 			laptop.wheel(x, y)
 			return
