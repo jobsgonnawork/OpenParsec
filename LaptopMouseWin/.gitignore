@@ -1,0 +1,4 @@
+*.exe
+sdk/parsec.h
+sdk/parsec-dso.h
+sdk/parsec.dll
