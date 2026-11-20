@@ -48,7 +48,8 @@ final class ConnectionLog: ObservableObject {
 		flushScheduled = false
 		lock.unlock()
 		for item in fresh {
-			if item.text.hasPrefix("[stream1") || item.text.hasPrefix("[external]") || item.text.hasPrefix("[cursor]") {
+			if item.text.hasPrefix("[stream1") || item.text.hasPrefix("[external]") || item.text.hasPrefix("[cursor]")
+				|| item.text.hasPrefix("[stream0") || item.text.hasPrefix("[freeze]") {
 				probeLines.append("\(item.time) \(item.text)")
 			}
 			if let last = entries.indices.last, entries[last].text == item.text {
@@ -1272,12 +1273,18 @@ class ParsecSDKBridge: ParsecService {
 	}
 
 	func stream1Metrics() -> String {
+		streamMetrics(1)
+	}
+
+	func streamMetrics(_ stream: UInt8) -> String {
 		var pcs = ParsecClientStatus()
 		let st = ParsecClientGetStatus(_parsec, &pcs)
-		let dec = pcs.decoder.1
-		let m = pcs.`self`.metrics.1
-		return String(format: "status %d, dec1 %dx%d h265=%@ 444=%@, net %.0f ms, enc %.1f ms, dec %.1f ms, %.1f Mbps, queued %d, slowRT %d fastRT %d",
-			st.rawValue, dec.width, dec.height, dec.h265 ? "1" : "0", dec.color444 ? "1" : "0", m.networkLatency, m.encodeLatency, m.decodeLatency, m.bitrate, m.queuedFrames, m.slowRTs, m.fastRTs)
+		let dec = stream == 0 ? pcs.decoder.0 : pcs.decoder.1
+		let m = stream == 0 ? pcs.`self`.metrics.0 : pcs.`self`.metrics.1
+		let name = withUnsafeBytes(of: dec.name) { String(decoding: $0.prefix { $0 != 0 }, as: UTF8.self) }
+		return String(format: "status %d%@, dec%d %@ %dx%d h265=%@ 444=%@, net %.0f ms, enc %.1f ms, dec %.1f ms, %.1f Mbps, queued %d, slowRT %d fastRT %d, sent %d",
+			st.rawValue, pcs.networkFailure ? " NETWORK FAILURE" : "", Int(stream), name, dec.width, dec.height, dec.h265 ? "1" : "0", dec.color444 ? "1" : "0",
+			m.networkLatency, m.encodeLatency, m.decodeLatency, m.bitrate, m.queuedFrames, m.slowRTs, m.fastRTs, m.packetsSent)
 	}
 
 	func sendUserData(type: ParsecUserDataType, message: Data) {

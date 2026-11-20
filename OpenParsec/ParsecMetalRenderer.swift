@@ -54,6 +54,14 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 	private var uploadedFrames = 0
 	private var rateSamples = 0
 
+	// stream 0 freeze watch: the video stops while the cursor, drawn locally, keeps moving
+	private var lastUploadAt: CFTimeInterval = 0
+	private var freezeFrom: CFTimeInterval = 0
+	private var freezeLoggedAt: CFTimeInterval = 0
+	private var pollCounts: [Int32: Int] = [:]
+	private var rejectedFrames = 0
+	private var rejectedInfo = ""
+
 	init?(_ device: MTLDevice, stream: UInt8 = UInt8(DEFAULT_STREAM), _ updateImage: @escaping () -> Void) {
 		guard let queue = device.makeCommandQueue() else { return nil }
 		let pipeline: MTLRenderPipelineState
@@ -89,6 +97,8 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 		}
 		lastDrawAt = 0
 		drawIntervals.removeAll()
+		lastUploadAt = 0
+		freezeFrom = 0
 	}
 
 	fileprivate func upload(_ f: ParsecFrame, _ image: UnsafeRawPointer) {
@@ -98,7 +108,12 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 			next()
 		}
 		let w = Int(f.width), h = Int(f.height), stride = Int(f.fullWidth), rows = Int(f.fullHeight)
-		guard f.isWholeNV12 else { return }
+		guard f.isWholeNV12 else {
+			rejectedFrames += 1
+			rejectedInfo = "fmt \(f.format.rawValue) \(w)x\(h) full \(stride)x\(rows) size \(f.size)"
+			return
+		}
+		lastUploadAt = CACurrentMediaTime()
 		let slot = (current + 1) % planes.count
 		if planes[slot]?.y.width != w || planes[slot]?.y.height != h {
 			planes[slot] = makePlanes(w, h)
@@ -112,6 +127,40 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 		if stream == UInt8(DEFAULT_STREAM), #available(iOS 15.0, *) {
 			PictureInPictureManager.shared.feedFrame(f, image)
 		}
+	}
+
+	// Logs when stream 0 stops getting frames and when they come back, with what PollFrame returned
+	// and the connection metrics, to tell the network, the host, the decoder and this renderer
+	// apart. A still host screen also sends no frames; its Mbps then stays near 0.
+	private func watchFreeze(_ polled: ParsecStatus) {
+		pollCounts[polled.rawValue, default: 0] += 1
+		let now = CACurrentMediaTime()
+		guard lastUploadAt > 0 else { return }
+		let gap = now - lastUploadAt
+		if freezeFrom > 0 && lastUploadAt > freezeFrom {
+			appNote(String(format: "[freeze] stream 0 back after %.1f s, polls %@, %@", lastUploadAt - freezeFrom, pollSummary(), CParsec.streamMetrics(stream)))
+			freezeFrom = 0
+			return
+		}
+		guard gap > 1.5 else {
+			if freezeFrom == 0 && gap < 0.1 {
+				pollCounts.removeAll()
+				rejectedFrames = 0
+			}
+			return
+		}
+		if freezeFrom == 0 {
+			freezeFrom = lastUploadAt
+			freezeLoggedAt = now
+			appNote(String(format: "[freeze] stream 0 no new frame for %.1f s, polls %@, rejected %d %@, %@", gap, pollSummary(), rejectedFrames, rejectedInfo, CParsec.streamMetrics(stream)))
+		} else if now - freezeLoggedAt > 10 {
+			freezeLoggedAt = now
+			appNote(String(format: "[freeze] still none after %.1f s, polls %@, rejected %d, %@", gap, pollSummary(), rejectedFrames, CParsec.streamMetrics(stream)))
+		}
+	}
+
+	private func pollSummary() -> String {
+		"[" + pollCounts.sorted { $0.key < $1.key }.map { "\($0.key):\($0.value)" }.joined(separator: " ") + "]"
 	}
 
 	private func makePlanes(_ w: Int, _ h: Int) -> (y: MTLTexture, c: MTLTexture)? {
@@ -156,7 +205,10 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 		let timeout = stream == UInt8(DEFAULT_STREAM) ? UInt32(max(1000 / fps, 8)) : 1
 
 		inFlight.wait()
-		CParsec.pollFrame(stream: stream, timeout: timeout, callback: frameCallback, opaque: Unmanaged.passUnretained(self).toOpaque())
+		let polled = CParsec.pollFrame(stream: stream, timeout: timeout, callback: frameCallback, opaque: Unmanaged.passUnretained(self).toOpaque())
+		if stream == UInt8(DEFAULT_STREAM) {
+			watchFreeze(polled)
+		}
 
 		guard let pass = view.currentRenderPassDescriptor, let drawable = view.currentDrawable,
 			  let cb = queue.makeCommandBuffer(), let enc = cb.makeRenderCommandEncoder(descriptor: pass) else {
@@ -188,6 +240,9 @@ class ParsecMetalRenderer: NSObject, MTKViewDelegate {
 			if stream == UInt8(DEFAULT_STREAM) {
 				if elapsed <= 2 {
 					CParsec.drawRate = Double(drawnFrames) / elapsed
+				}
+				if rateSamples % 5 == 0 {
+					appNote(String(format: "[stream0] %.1f new frames/s, %.0fx%.0f, %@", Double(uploadedFrames) / elapsed, frameSize.width, frameSize.height, CParsec.streamMetrics(stream)))
 				}
 			} else if rateSamples % 5 == 0 {
 				appNote(String(format: "[stream%d] %.1f new frames/s, %.0fx%.0f, drawable %.0fx%.0f, %@", Int(stream), Double(uploadedFrames) / elapsed, frameSize.width, frameSize.height, view.drawableSize.width, view.drawableSize.height, CParsec.stream1Metrics()))

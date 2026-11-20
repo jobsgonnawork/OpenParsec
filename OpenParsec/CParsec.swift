@@ -171,6 +171,7 @@ protocol ParsecService {
 	func updateHostVideoConfig()
 	func startStream1(output: String)
 	func stream1Metrics() -> String
+	func streamMetrics(_ stream: UInt8) -> String
 	func stopStream1()
 }
 
@@ -273,6 +274,10 @@ class CParsec {
 
 	static func stopStream1() {
 		parsecImpl.stopStream1()
+	}
+
+	static func streamMetrics(_ stream: UInt8) -> String {
+		parsecImpl.streamMetrics(stream)
 	}
 
 	static func stream1Metrics() -> String {
